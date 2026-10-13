@@ -1,0 +1,34 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "jovva-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "jovva",
+      "database_id": "00000000-0000-4000-8000-000000000001",
+      "migrations_dir": "migrations",
+    },
+  ],
+  "vars": {
+    "APP_ORIGIN": "http://localhost:5173",
+    "OPERATOR_EMAILS": "",
+    "ARC_RPC_URL": "https://rpc.testnet.arc.io",
+  },
+  "ratelimits": [
+    {
+      "name": "AUTH_LIMIT",
+      "namespace_id": "504200201",
+      "simple": { "limit": 10, "period": 60 },
+    },
+    {
+      "name": "CLAIM_LIMIT",
+      "namespace_id": "504200202",
+      "simple": { "limit": 10, "period": 60 },
+    },
+  ],
+  "triggers": { "crons": ["* * * * *"] },
+  "observability": { "enabled": true },
+}

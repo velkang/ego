@@ -1,0 +1,25 @@
+{
+  "name": "@jovva/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local --port 8797",
+    "check": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@circle-fin/developer-controlled-wallets": "10.8.1",
+    "@jovva/chain": "workspace:*",
+    "better-auth": "1.7.7",
+    "drizzle-orm": "0.45.4",
+    "hono": "4.13.13",
+    "viem": "^2.37.3",
+    "zod": "^4.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261012.1",
+    "@types/node": "^22.0.0",
+    "miniflare": "5.20261006.1-alpha"
+  }
+}

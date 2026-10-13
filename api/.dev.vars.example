@@ -1,0 +1,10 @@
+BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
+ACCOUNT_HASH_SECRET=replace-with-a-separate-stable-random-secret
+RESEND_API_KEY=
+EMAIL_FROM=Jovva <login@your-verified-domain.com>
+CIRCLE_API_KEY=
+CIRCLE_ENTITY_SECRET=
+CIRCLE_WALLET_SET_ID=
+CIRCLE_OPERATOR_WALLET_ID=
+JOVVA_DROPS_ADDRESS=
+CIRCLE_WEBHOOK_SUBSCRIPTION_ID=

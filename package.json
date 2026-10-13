@@ -1,0 +1,38 @@
+{
+  "name": "jovva",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "dev": "pnpm --dir api dev",
+    "web:dev": "pnpm --dir web dev",
+    "check": "pnpm -r --if-present check",
+    "test": "pnpm -r --if-present test",
+    "web:build": "pnpm --dir web build",
+    "web:deploy": "pnpm web:build && wrangler deploy -c web/wrangler.jsonc",
+    "api:build": "wrangler deploy --dry-run -c api/wrangler.jsonc --outdir dist",
+    "api:deploy": "wrangler deploy -c api/wrangler.jsonc",
+    "db:migrate:local": "wrangler d1 migrations apply jovva --local -c api/wrangler.jsonc && node api/scripts/backfill-slugs.mjs --local",
+    "db:migrate:remote": "wrangler d1 migrations apply jovva --remote -c api/wrangler.jsonc && node api/scripts/backfill-slugs.mjs --remote",
+    "contracts:build": "forge build --root contracts",
+    "contracts:test": "forge test --root contracts",
+    "smoke:local": "node api/scripts/smoke-local.mjs",
+    "smoke:arc": "node api/scripts/smoke-arc.mjs"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "workerd"
+    ],
+    "overrides": {
+      "axios": "1.19.0"
+    }
+  }
+}

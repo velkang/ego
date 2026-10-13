@@ -1,0 +1,56 @@
+import { drizzle } from "drizzle-orm/d1";
+import * as schema from "./schema";
+export const database = (binding: D1Database) => drizzle(binding, { schema });
+export type EventRow = {
+  id: string;
+  slug: string;
+  title: string;
+  venue: string;
+  description: string;
+  latitude: number;
+  longitude: number;
+  starts_at: number;
+  ends_at: number;
+  status: "draft" | "launching" | "active" | "paused" | "closed";
+  budget: number;
+  created_at: number;
+};
+export type SpotRow = {
+  id: string;
+  event_id: string;
+  title: string;
+  latitude: number;
+  longitude: number;
+  radius: number;
+  amount: number;
+  capacity: number;
+  remaining: number;
+};
+export type ClaimRow = {
+  id: string;
+  user_id: string;
+  event_id: string;
+  spot_id: string;
+  account_hash: string;
+  recipient: string;
+  amount: number;
+  idempotency_key: string;
+  transaction_id: string | null;
+  transaction_hash: string | null;
+  status: "reserved" | "submitted" | "confirmed" | "failed";
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+};
+export type OperationRow = {
+  id: string;
+  event_id: string;
+  action: string;
+  phase: string;
+  idempotency_key: string;
+  transaction_id: string | null;
+  status: string;
+  error: string | null;
+  created_at: number;
+  updated_at: number;
+};

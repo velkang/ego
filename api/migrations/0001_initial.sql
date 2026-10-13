@@ -1,0 +1,18 @@
+PRAGMA foreign_keys = ON;
+CREATE TABLE user (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, emailVerified INTEGER NOT NULL DEFAULT 0, image TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
+CREATE TABLE session (id TEXT PRIMARY KEY, expiresAt INTEGER NOT NULL, token TEXT NOT NULL UNIQUE, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL, ipAddress TEXT, userAgent TEXT, userId TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE);
+CREATE INDEX session_user ON session(userId);
+CREATE TABLE account (id TEXT PRIMARY KEY, accountId TEXT NOT NULL, providerId TEXT NOT NULL, userId TEXT NOT NULL REFERENCES user(id) ON DELETE CASCADE, accessToken TEXT, refreshToken TEXT, idToken TEXT, accessTokenExpiresAt INTEGER, refreshTokenExpiresAt INTEGER, scope TEXT, password TEXT, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
+CREATE INDEX account_user ON account(userId);
+CREATE TABLE verification (id TEXT PRIMARY KEY, identifier TEXT NOT NULL, value TEXT NOT NULL, expiresAt INTEGER NOT NULL, createdAt INTEGER NOT NULL, updatedAt INTEGER NOT NULL);
+CREATE INDEX verification_identifier ON verification(identifier);
+CREATE TABLE wallet (user_id TEXT PRIMARY KEY REFERENCES user(id), idempotency_key TEXT NOT NULL UNIQUE, wallet_id TEXT UNIQUE, address TEXT, created_at INTEGER NOT NULL);
+CREATE TABLE event (id TEXT PRIMARY KEY, title TEXT NOT NULL, venue TEXT NOT NULL, description TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL CHECK(ends_at > starts_at), status TEXT NOT NULL DEFAULT 'draft', budget INTEGER NOT NULL CHECK(budget > 0), created_at INTEGER NOT NULL);
+CREATE TABLE spot (id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES event(id), title TEXT NOT NULL, latitude REAL NOT NULL, longitude REAL NOT NULL, radius REAL NOT NULL CHECK(radius > 0), amount INTEGER NOT NULL CHECK(amount > 0), capacity INTEGER NOT NULL CHECK(capacity > 0), remaining INTEGER NOT NULL CHECK(remaining >= 0 AND remaining <= capacity));
+CREATE INDEX spot_event ON spot(event_id);
+CREATE TABLE claim (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id), event_id TEXT NOT NULL REFERENCES event(id), spot_id TEXT NOT NULL REFERENCES spot(id), account_hash TEXT NOT NULL, recipient TEXT NOT NULL, amount INTEGER NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, transaction_id TEXT UNIQUE, transaction_hash TEXT, status TEXT NOT NULL CHECK(status IN ('reserved','submitted','confirmed','failed')), error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX claim_account_event ON claim(user_id,event_id) WHERE status != 'failed';
+CREATE INDEX claim_pending ON claim(status,updated_at);
+CREATE TABLE operation (id TEXT PRIMARY KEY, event_id TEXT NOT NULL REFERENCES event(id), action TEXT NOT NULL, phase TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, transaction_id TEXT UNIQUE, status TEXT NOT NULL, error TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE UNIQUE INDEX operation_event_pending ON operation(event_id) WHERE status = 'pending';
+CREATE TABLE webhook (id TEXT PRIMARY KEY, received_at INTEGER NOT NULL);

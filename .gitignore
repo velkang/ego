@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
+.env*
+!.env.example
+!.dev.vars.example
+contracts/out/
+contracts/cache/
+contracts/broadcast/
+coverage/
+.impeccable
+.pnpm-store
+PRODUCT.md 
+DESIGN.md
+seed.local.sql
