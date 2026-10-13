@@ -1,3 +1,5 @@
+APP_ORIGIN=http://localhost:5173
+OPERATOR_EMAILS=
 BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 ACCOUNT_HASH_SECRET=replace-with-a-separate-stable-random-secret
 RESEND_API_KEY=

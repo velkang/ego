@@ -41,7 +41,7 @@ export function auth(env: Bindings) {
   });
 }
 export const isOperator = (env: Bindings, email: string) =>
-  env.OPERATOR_EMAILS.split(",")
+  (env.OPERATOR_EMAILS ?? "").split(",")
     .map((v) => v.trim().toLowerCase())
     .filter(Boolean)
     .includes(email.toLowerCase());

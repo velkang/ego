@@ -4,17 +4,17 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-12",
   "compatibility_flags": ["nodejs_compat"],
+  "keep_vars": true,
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "jovva",
-      "database_id": "00000000-0000-4000-8000-000000000001",
+      "database_id": "2e1bf7a4-da03-4aea-873e-b76ba74a0a16",
       "migrations_dir": "migrations",
     },
   ],
   "vars": {
-    "APP_ORIGIN": "http://localhost:5173",
-    "OPERATOR_EMAILS": "",
+    "APP_ORIGIN": "https://jovva-web.velikanghost.workers.dev",
     "ARC_RPC_URL": "https://rpc.testnet.arc.io",
   },
   "ratelimits": [
