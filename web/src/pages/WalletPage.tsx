@@ -23,12 +23,14 @@ export function WalletPage({
   requestSignIn,
   refreshKey = 0,
   onAction,
+  onCreate,
 }: {
   signedIn: boolean;
   accountId: string;
   requestSignIn: () => void;
   refreshKey?: number;
   onAction: (action: "send" | "receive") => void;
+  onCreate: () => void;
 }) {
   const generation = useRef(0);
   const [data, setData] = useState<WalletSnapshot | null>(null),
@@ -173,21 +175,23 @@ export function WalletPage({
           </span>
           Receive
         </button>
-        {[
-          { href: "/explore", icon: Compass, label: "Hunt" },
-          { href: "/hide", icon: Plus, label: "Hide" },
-        ].map(({ href, icon: Icon, label }) => (
-          <Link
-            key={href}
-            href={href}
-            className={`action ${label === "Hunt" ? "main" : ""}`}
-          >
-            <span className="action-icon">
-              <Icon size={22} />
-            </span>
-            {label}
-          </Link>
-        ))}
+        <Link href="/explore" className="action main">
+          <span className="action-icon">
+            <Compass size={22} />
+          </span>
+          Hunt
+        </Link>
+        <button
+          type="button"
+          className="action"
+          onClick={onCreate}
+          aria-haspopup="dialog"
+        >
+          <span className="action-icon">
+            <Plus size={22} />
+          </span>
+          Create
+        </button>
       </div>
       <Link href="/prizes" className="prize-teaser">
         <span className="row-icon">

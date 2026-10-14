@@ -303,7 +303,7 @@ export function CampaignPage({
               {path === "/pay"
                 ? "Pay winners"
                 : path === "/hide"
-                  ? "Hide money"
+                  ? "Create money drops"
                   : "Create a giveaway"}
             </h1>
             <p>

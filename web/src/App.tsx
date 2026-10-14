@@ -11,6 +11,7 @@ import { WalletDrawer } from "./components/WalletDrawer";
 import { CreateSheet } from "./components/CreateSheet";
 import { Onboarding } from "./components/Onboarding";
 import { AccountMenu } from "./components/AccountMenu";
+import { PageBoundary } from "./components/PageBoundary";
 const AppsPage = lazy(() =>
   import("./pages/AppsPage").then((m) => ({ default: m.AppsPage })),
 );
@@ -121,7 +122,10 @@ export function App() {
                   </Link>
                 )}
                 {session ? (
-                  <AccountMenu key={session.user.id} email={session.user.email} />
+                  <AccountMenu
+                    key={session.user.id}
+                    email={session.user.email}
+                  />
                 ) : (
                   <button
                     className="button secondary"
@@ -146,65 +150,70 @@ export function App() {
               ...(mapView || immersive ? { height: "100%" } : {}),
             }}
           >
-            <Suspense fallback={<Spinner label="Loading page" full />}>
-              {["/", "/wallet", "/wallet/send", "/wallet/receive"].includes(
-                path,
-              ) ? (
-                <WalletPage
-                  key={session?.user.id ?? "guest"}
-                  accountId={session?.user.id ?? "guest"}
-                  refreshKey={walletRefresh}
-                  onAction={setWalletAction}
-                  {...authProps}
-                />
-              ) : path === "/apps" ? (
-                <AppsPage />
-              ) : path === "/activity" ? (
-                <ActivityPage
-                  key={session?.user.id ?? "guest"}
-                  accountId={session?.user.id ?? "guest"}
-                  {...authProps}
-                />
-              ) : path === "/explore" || path === "/map" ? (
-                <HomePage />
-              ) : eventRef ? (
-                <EventPage
-                  key={`${eventRef}:${session?.user.id ?? "guest"}`}
-                  id={eventRef}
-                  {...authProps}
-                  onHuntChange={setImmersive}
-                />
-              ) : ["/create", "/hide", "/pay"].includes(path) ? (
-                <CampaignPage
-                  key={`${path}:${session?.user.id ?? "guest"}`}
-                  path={path}
-                  {...authProps}
-                />
-              ) : path === "/prizes" || path.startsWith("/enter/") ? (
-                <EntryPage
-                  key={`${path}:${session?.user.id ?? "guest"}`}
-                  path={path}
-                  {...authProps}
-                  onHuntChange={setImmersive}
-                />
-              ) : path === "/admin" && operator ? (
-                <AdminPage />
-              ) : (
-                <main className="page">
-                  <h1>
-                    {path === "/admin" ? "Team access only" : "Page not found"}
-                  </h1>
-                  <button
-                    className="button primary"
-                    onClick={() =>
-                      path === "/admin" ? setShowAuth(true) : navigate("/")
-                    }
-                  >
-                    {path === "/admin" ? "Sign in" : "Go to wallet"}
-                  </button>
-                </main>
-              )}
-            </Suspense>
+            <PageBoundary key={path}>
+              <Suspense fallback={<Spinner label="Loading page" full />}>
+                {["/", "/wallet", "/wallet/send", "/wallet/receive"].includes(
+                  path,
+                ) ? (
+                  <WalletPage
+                    key={session?.user.id ?? "guest"}
+                    accountId={session?.user.id ?? "guest"}
+                    refreshKey={walletRefresh}
+                    onAction={setWalletAction}
+                    onCreate={() => setCreating(true)}
+                    {...authProps}
+                  />
+                ) : path === "/apps" ? (
+                  <AppsPage />
+                ) : path === "/activity" ? (
+                  <ActivityPage
+                    key={session?.user.id ?? "guest"}
+                    accountId={session?.user.id ?? "guest"}
+                    {...authProps}
+                  />
+                ) : path === "/explore" || path === "/map" ? (
+                  <HomePage />
+                ) : eventRef ? (
+                  <EventPage
+                    key={`${eventRef}:${session?.user.id ?? "guest"}`}
+                    id={eventRef}
+                    {...authProps}
+                    onHuntChange={setImmersive}
+                  />
+                ) : ["/create", "/hide", "/pay"].includes(path) ? (
+                  <CampaignPage
+                    key={`${path}:${session?.user.id ?? "guest"}`}
+                    path={path}
+                    {...authProps}
+                  />
+                ) : path === "/prizes" || path.startsWith("/enter/") ? (
+                  <EntryPage
+                    key={`${path}:${session?.user.id ?? "guest"}`}
+                    path={path}
+                    {...authProps}
+                    onHuntChange={setImmersive}
+                  />
+                ) : path === "/admin" && operator ? (
+                  <AdminPage />
+                ) : (
+                  <main className="page">
+                    <h1>
+                      {path === "/admin"
+                        ? "Team access only"
+                        : "Page not found"}
+                    </h1>
+                    <button
+                      className="button primary"
+                      onClick={() =>
+                        path === "/admin" ? setShowAuth(true) : navigate("/")
+                      }
+                    >
+                      {path === "/admin" ? "Sign in" : "Go to wallet"}
+                    </button>
+                  </main>
+                )}
+              </Suspense>
+            </PageBoundary>
           </div>
         </div>
         {!immersive && (

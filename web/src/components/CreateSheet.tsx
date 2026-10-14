@@ -5,7 +5,7 @@ const options = [
   {
     href: "/hide",
     icon: MapPinned,
-    title: "Hide money",
+    title: "Create money drops",
     sub: "Place USDC drops for people to find",
   },
   {
