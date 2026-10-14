@@ -55,10 +55,12 @@ export function CampaignPage({
   path,
   signedIn,
   requestSignIn,
+  managementOnly = false,
 }: {
   path: string;
   signedIn: boolean;
   requestSignIn: () => void;
+  managementOnly?: boolean;
 }) {
   const [kind, setKind] = useState<Kind>(
       path === "/hide" ? "map" : path === "/pay" ? "prize" : "code",
@@ -239,27 +241,32 @@ export function CampaignPage({
     }
   }, 0);
   const current = events.find((e) => e.id === created?.id);
+  const Container = managementOnly ? "section" : "main";
   return (
-    <main className="page create-page">
-      <div className={kind === "prize" ? "prize-hero" : "page-heading"}>
-        {kind === "prize" && <LargeCoin size={150} />}
-        <div>
-          <h1>
-            {path === "/pay"
-              ? "Pay winners"
-              : path === "/hide"
-                ? "Hide money"
-                : "Create a giveaway"}
-          </h1>
-          <p>
-            {path === "/pay"
-              ? "Fund prizes. Winners claim with their verified email."
-              : path === "/hide"
-                ? "Choose the places, set the rewards, and fund your hunt."
-                : "Make a code, an event QR, or a puzzle worth solving."}
-          </p>
+    <Container
+      className={managementOnly ? "campaign-management" : "page create-page"}
+    >
+      {!managementOnly && (
+        <div className={kind === "prize" ? "prize-hero" : "page-heading"}>
+          {kind === "prize" && <LargeCoin size={150} />}
+          <div>
+            <h1>
+              {path === "/pay"
+                ? "Pay winners"
+                : path === "/hide"
+                  ? "Hide money"
+                  : "Create a giveaway"}
+            </h1>
+            <p>
+              {path === "/pay"
+                ? "Fund prizes. Winners claim with their verified email."
+                : path === "/hide"
+                  ? "Choose the places, set the rewards, and fund your hunt."
+                  : "Make a code, an event QR, or a puzzle worth solving."}
+            </p>
+          </div>
         </div>
-      </div>
+      )}
       {error && (
         <p className="error" role="alert">
           {error}
@@ -268,7 +275,9 @@ export function CampaignPage({
       {message && <p role="status">{message}</p>}
       {!signedIn ? (
         <button className="button primary" onClick={requestSignIn}>
-          Sign in to create
+          {managementOnly
+            ? "Sign in to see your campaigns"
+            : "Sign in to create"}
         </button>
       ) : created ? (
         <>
@@ -387,7 +396,7 @@ export function CampaignPage({
             </section>
           )}
         </>
-      ) : (
+      ) : managementOnly ? null : (
         <form
           className="form-stack"
           onSubmit={(e) => {
@@ -718,10 +727,12 @@ export function CampaignPage({
           ))}
         </section>
       )}
-      <Link className="text-button" href="/">
-        <ArrowLeft size={16} />
-        Wallet
-      </Link>
-    </main>
+      {!managementOnly && (
+        <Link className="text-button" href="/">
+          <ArrowLeft size={16} />
+          Home
+        </Link>
+      )}
+    </Container>
   );
 }

@@ -4,6 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 import type { Coordinates } from "@jovva/chain";
 import { Spinner } from "./Spinner";
 import { formatUSDC } from "@jovva/chain";
+import { restyleMap } from "../lib/map-style";
 import type { Event, Spot } from "../lib/types";
 
 const EMPTY_SPOTS: Spot[] = [];
@@ -53,7 +54,7 @@ export function EventMap({
     void fetch(STYLE, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error("Map style unavailable");
-        const style = await response.json();
+        const style = restyleMap(await response.json());
         if (!alive) return;
         const center = event ??
           spots[0] ??
@@ -143,9 +144,63 @@ export function EventMap({
     const instance = map.current;
     if (!instance || !position || loading || failed) return;
     const dot = document.createElement("span");
-    dot.className = "location-dot";
+    dot.className = "location-marker";
+    const point = document.createElement("span");
+    point.className = "location-dot";
+    dot.append(point);
+    const target = spots.find((spot) => spot.id === selected);
+    if (target) {
+      const bearing =
+        (Math.atan2(
+          (target.longitude - position.longitude) *
+            Math.cos((position.latitude * Math.PI) / 180),
+          target.latitude - position.latitude,
+        ) *
+          180) /
+        Math.PI;
+      const cone = document.createElement("span");
+      cone.className = "direction-cone";
+      cone.style.transform = `rotate(${bearing}deg)`;
+      cone.setAttribute("aria-hidden", "true");
+      dot.prepend(cone);
+    }
+    const guidance = {
+      type: "FeatureCollection" as const,
+      features: target
+        ? [
+            {
+              type: "Feature" as const,
+              properties: {},
+              geometry: {
+                type: "LineString" as const,
+                coordinates: [
+                  [position.longitude, position.latitude],
+                  [target.longitude, target.latitude],
+                ],
+              },
+            },
+          ]
+        : [],
+    };
+    if (instance.getSource("guidance"))
+      (instance.getSource("guidance") as maplibregl.GeoJSONSource).setData(
+        guidance,
+      );
+    else {
+      instance.addSource("guidance", { type: "geojson", data: guidance });
+      instance.addLayer({
+        id: "guidance",
+        type: "line",
+        source: "guidance",
+        paint: {
+          "line-color": "#1f6bff",
+          "line-width": 3,
+          "line-dasharray": [1, 2],
+        },
+      });
+    }
     dot.setAttribute("aria-label", "Your location");
-    const marker = new maplibregl.Marker({ element: dot })
+    const marker = new maplibregl.Marker({ element: dot, rotationAlignment: "map" })
       .setLngLat([position.longitude, position.latitude])
       .addTo(instance);
     const bounds = new maplibregl.LngLatBounds().extend([
@@ -165,7 +220,7 @@ export function EventMap({
     return () => {
       marker.remove();
     };
-  }, [position, loading, failed, event?.id, spots, events]);
+  }, [position, selected, loading, failed, event?.id, spots, events]);
 
   useEffect(() => {
     const instance = map.current;

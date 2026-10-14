@@ -30,9 +30,11 @@ class CoinBoundary extends Component<
 export function LargeCoin({
   size = 132,
   entrance = "none",
+  leaving = false,
 }: {
   size?: number;
   entrance?: "none" | "drop";
+  leaving?: boolean;
 }) {
   const [available, setAvailable] = useState(false);
   useEffect(() => {
@@ -54,13 +56,20 @@ export function LargeCoin({
       className="coin-still"
     />
   );
-  return available ? (
-    <CoinBoundary fallback={fallback}>
-      <Suspense fallback={fallback}>
-        <ThreeCoin size={size} entrance={entrance} />
-      </Suspense>
-    </CoinBoundary>
-  ) : (
-    fallback
+  return (
+    <span
+      className={`coin-visual ${leaving && !available ? "coin-leaving" : ""}`}
+      style={{ width: size, height: size }}
+    >
+      {available ? (
+        <CoinBoundary fallback={fallback}>
+          <Suspense fallback={fallback}>
+            <ThreeCoin size={size} entrance={entrance} leaving={leaving} />
+          </Suspense>
+        </CoinBoundary>
+      ) : (
+        fallback
+      )}
+    </span>
   );
 }

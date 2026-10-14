@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import {
   distanceMeters,
   formatUSDC,
@@ -15,6 +22,7 @@ import { Scene } from "../components/Scene";
 import { ClaimReceipt } from "../components/ClaimReceipt";
 import { Spinner } from "../components/Spinner";
 import { HoldButton } from "../components/HoldButton";
+import { RollingDigits } from "../components/Amount";
 import { Coin, LargeCoin } from "../components/Coin";
 export function EventPage({
   id,
@@ -235,8 +243,11 @@ export function EventPage({
           <span style={{ width: 42 }} />
         </div>
         <div className="scene-center">
-          <LargeCoin size={260} entrance="drop" />
-          <div className="ground-ring" aria-hidden="true" />
+          <LargeCoin size={260} entrance="drop" leaving={busy} />
+          <div
+            className={`ground-ring ${busy ? "released" : ""}`}
+            aria-hidden="true"
+          />
         </div>
         <div className="scene-bottom">
           <h2>{formatUSDC(selected.amount)} USDC</h2>
@@ -293,8 +304,13 @@ export function EventPage({
             <span className="dial-ticks major" />
             <span className="dial-north" />
             <div
-              className="dial-orbit"
-              style={{ transform: `rotate(${bearing}deg)` }}
+              className={`dial-orbit ${distance !== null && distance < selected.radius * 3 ? "hot" : ""}`}
+              style={
+                {
+                  transform: `rotate(${bearing}deg)`,
+                  "--pulse": `${Math.max(0.6, Math.min(2.4, (distance ?? 300) / 150))}s`,
+                } as CSSProperties
+              }
             >
               <span
                 className="coin-marker"
@@ -307,7 +323,14 @@ export function EventPage({
             </div>
             <div className="dial-face">
               <strong className="amount">
-                {distance === null ? "—" : Math.round(distance)}
+                {distance === null ? (
+                  "—"
+                ) : (
+                  <>
+                    <span className="sr-only">{Math.round(distance)}</span>
+                    <RollingDigits value={String(Math.round(distance))} />
+                  </>
+                )}
                 <span className="cur">m</span>
               </strong>
               <span className={`dial-trend ${warming ? "" : "cold"}`}>

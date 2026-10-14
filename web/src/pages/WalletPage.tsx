@@ -5,13 +5,9 @@ import {
   ChevronRight,
   Compass,
   Gift,
-  Trophy,
   Eye,
   EyeOff,
   Plus,
-  Puzzle,
-  QrCode,
-  Ticket,
   RefreshCw,
 } from "lucide-react";
 import { formatUSDC, explorerTransaction } from "@jovva/chain";
@@ -22,52 +18,6 @@ import { Amount } from "../components/Amount";
 import { Coin, LargeCoin } from "../components/Coin";
 import { Link } from "../components/Link";
 import { Spinner } from "../components/Spinner";
-const ways = [
-  {
-    href: "/prizes",
-    icon: Gift,
-    title: "Prizes waiting for you",
-    sub: "Claim prizes and bounties with your email",
-  },
-  {
-    href: "/enter/code",
-    icon: Ticket,
-    title: "Enter a code",
-    sub: "From a giveaway, a post or a flyer",
-  },
-  {
-    href: "/enter/qr",
-    icon: QrCode,
-    title: "Scan an event QR",
-    sub: "Scan the code to find your reward",
-  },
-  {
-    href: "/enter/puzzle",
-    icon: Puzzle,
-    title: "Solve a puzzle",
-    sub: "Crack the riddle, keep the coin",
-  },
-];
-const organisers = [
-  {
-    href: "/pay",
-    icon: Trophy,
-    title: "Pay winners",
-    sub: "Fund prizes that winners claim with their email",
-  },
-  {
-    href: "/hide",
-    icon: Plus,
-    title: "Hide money",
-    sub: "Place USDC drops for people to find",
-  },
-  {
-    href: "/create",
-    icon: Ticket,
-    title: "Codes, event QR codes and puzzles",
-    sub: "Giveaways with a code, a scan or an answer",
-  },
-];
 export function WalletPage({
   signedIn,
   accountId,
@@ -170,6 +120,8 @@ export function WalletPage({
             <Amount
               base={data.balanceUnits ?? legacyUnits(data.balance)}
               hidden={hidden}
+              prefix="$"
+              currency=""
             />
           ) : busy && signedIn ? (
             <Spinner label="Loading balance" />
@@ -219,32 +171,40 @@ export function WalletPage({
           </Link>
         ))}
       </div>
-      {[
-        { title: "Ways to find money", rows: ways },
-        { title: "For organisers", rows: organisers },
-      ].map(({ title, rows }) => (
-        <section className="section" key={title}>
-          <div className="section-title">
-            <h2>{title}</h2>
+      <Link href="/prizes" className="prize-teaser">
+        <span className="row-icon">
+          <Gift size={19} />
+        </span>
+        <span className="row-main">
+          <strong>Prizes waiting for you</strong>
+          <span>Won a hackathon or a bounty? Claim it with your email</span>
+        </span>
+        <ChevronRight size={18} />
+      </Link>
+      <section className="section">
+        <div className="section-title">
+          <h2>Coins</h2>
+        </div>
+        <div className="list-card">
+          <div className="list-row coin-row">
+            <img src="/tokens/usdc.svg" alt="" width={36} height={36} />
+            <span className="row-main">
+              <strong>USDC</strong>
+              <span>US dollar · Circle</span>
+            </span>
+            <span className="row-end coin-value">
+              {data?.balance != null ? (
+                <Amount
+                  base={data.balanceUnits ?? legacyUnits(data.balance)}
+                  hidden={hidden}
+                />
+              ) : (
+                "—"
+              )}
+            </span>
           </div>
-          <div className="list-card">
-            {rows.map(({ href, icon: Icon, title, sub }) => (
-              <Link href={href} className="list-row" key={href}>
-                <span className="row-icon">
-                  <Icon size={19} />
-                </span>
-                <span className="row-main">
-                  <strong>{title}</strong>
-                  <span>{sub}</span>
-                </span>
-                <span className="row-end">
-                  <ChevronRight size={18} />
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-      ))}
+        </div>
+      </section>
       <section className="section">
         <div className="section-title">
           <h2>Your collection</h2>

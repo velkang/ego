@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Wallet, Map, Gift, Plus } from "lucide-react";
+import { Coins, Compass, ArrowUpDown, Plus } from "lucide-react";
 import { authClient } from "./lib/auth";
 import { api } from "./lib/api";
 import { invalidateWallet } from "./lib/wallet";
@@ -8,6 +8,14 @@ import { AuthDialog } from "./components/AuthDialog";
 import { Link } from "./components/Link";
 import { Spinner } from "./components/Spinner";
 import { WalletDrawer } from "./components/WalletDrawer";
+import { CreateSheet } from "./components/CreateSheet";
+import { Onboarding } from "./components/Onboarding";
+const AppsPage = lazy(() =>
+  import("./pages/AppsPage").then((m) => ({ default: m.AppsPage })),
+);
+const ActivityPage = lazy(() =>
+  import("./pages/ActivityPage").then((m) => ({ default: m.ActivityPage })),
+);
 const HomePage = lazy(() =>
   import("./pages/HomePage").then((m) => ({ default: m.HomePage })),
 );
@@ -27,10 +35,10 @@ const EntryPage = lazy(() =>
   import("./pages/EntryPage").then((m) => ({ default: m.EntryPage })),
 );
 const tabs = [
-  { href: "/", label: "Wallet", icon: Wallet },
-  { href: "/explore", label: "Explore", icon: Map },
-  { href: "/prizes", label: "Prizes", icon: Gift },
+  { href: "/", label: "Home", icon: Coins },
   { href: "/create", label: "Create", icon: Plus },
+  { href: "/apps", label: "Apps", icon: Compass },
+  { href: "/activity", label: "Activity", icon: ArrowUpDown },
 ];
 export function App() {
   const path = useRoute(),
@@ -43,6 +51,7 @@ export function App() {
         ? "receive"
         : null;
   const [walletRefresh, setWalletRefresh] = useState(0);
+  const [creating, setCreating] = useState(false);
   const [showAuth, setShowAuth] = useState(false),
     [operator, setOperator] = useState(false),
     [immersive, setImmersive] = useState(false),
@@ -101,7 +110,10 @@ export function App() {
         </a>
         <div className={`phone-scroll ${mapView || immersive ? "bleed" : ""}`}>
           {!mapView && !immersive && (
-            <header className="topbar">
+            <header
+              className="topbar"
+              style={{ viewTransitionName: "ego-topbar" }}
+            >
               <Link className="brand" href="/" aria-label="Ego home">
                 ego
                 <span className="brand-dot" />
@@ -139,7 +151,10 @@ export function App() {
           <div
             id="main-content"
             tabIndex={-1}
-            style={mapView || immersive ? { height: "100%" } : undefined}
+            style={{
+              viewTransitionName: "ego-page",
+              ...(mapView || immersive ? { height: "100%" } : {}),
+            }}
           >
             <Suspense fallback={<Spinner label="Loading page" full />}>
               {path === "/" || path === "/wallet" || walletAction ? (
@@ -147,6 +162,14 @@ export function App() {
                   key={session?.user.id ?? "guest"}
                   accountId={session?.user.id ?? "guest"}
                   refreshKey={walletRefresh}
+                  {...authProps}
+                />
+              ) : path === "/apps" ? (
+                <AppsPage />
+              ) : path === "/activity" ? (
+                <ActivityPage
+                  key={session?.user.id ?? "guest"}
+                  accountId={session?.user.id ?? "guest"}
                   {...authProps}
                 />
               ) : path === "/explore" || path === "/map" ? (
@@ -192,16 +215,39 @@ export function App() {
           </div>
         </div>
         {!immersive && (
-          <nav className="tabbar" aria-label="Main navigation">
+          <nav
+            className="tabbar"
+            aria-label="Main navigation"
+            style={{ viewTransitionName: "ego-tabbar" }}
+          >
             {tabs.map(({ href, label, icon: Icon }) => {
               const active =
                 href === "/"
                   ? path === "/" || path.startsWith("/wallet")
-                  : href === "/explore"
-                    ? mapView
-                    : href === "/prizes"
-                      ? path === "/prizes" || path.startsWith("/enter/")
+                  : href === "/apps"
+                    ? path === "/apps" ||
+                      mapView ||
+                      path === "/prizes" ||
+                      path.startsWith("/enter/")
+                    : href === "/activity"
+                      ? path === "/activity"
                       : ["/create", "/hide", "/pay"].includes(path);
+              if (href === "/create")
+                return (
+                  <button
+                    key={href}
+                    className={`tab-create ${active ? "active" : ""}`}
+                    onClick={() => setCreating(true)}
+                    aria-label="Create"
+                    aria-haspopup="dialog"
+                    aria-expanded={creating}
+                  >
+                    <span className="tab-create-btn">
+                      <Plus size={24} strokeWidth={2.6} />
+                    </span>
+                    <span>Create</span>
+                  </button>
+                );
               return (
                 <Link
                   key={href}
@@ -223,6 +269,13 @@ export function App() {
             {...authProps}
             onClose={() => navigate("/", true)}
             onConfirmed={() => setWalletRefresh((value) => value + 1)}
+          />
+        )}
+        {creating && <CreateSheet onClose={() => setCreating(false)} />}
+        {path === "/" && !showAuth && !creating && (
+          <Onboarding
+            signedIn={!!session}
+            requestSignIn={() => setShowAuth(true)}
           />
         )}
         {showAuth && (
