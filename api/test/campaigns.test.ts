@@ -26,6 +26,7 @@ vi.mock("../src/circle", () => ({
   circle: vi.fn(),
   rpc: () => ({
     getBalance: async () => 1000n * 10n ** 18n,
+    estimateGas: async () => 190000n,
     estimateFeesPerGas: async () => ({
       maxFeePerGas: 1000000000n,
       maxPriorityFeePerGas: 100000000n,
@@ -100,6 +101,7 @@ beforeEach(() => {
     "0003_event_slugs.sql",
     "0004_campaigns.sql",
     "0005_funding_quote_binding.sql",
+    "0006_creator_gas.sql",
   ])
     sql.exec(
       readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"),
@@ -150,6 +152,18 @@ it("binds funding confirmation to the reviewed quote and requires recent verific
     await request(`/campaigns/${created.id}/quote`, {})
   ).json();
   expect(quote.amount).toBe(5000000);
+  const saved = JSON.parse(
+    sql.prepare("SELECT funding_fee FROM event WHERE id=?").get(created.id)!
+      .funding_fee as string,
+  );
+  expect(Object.keys(saved.fees)).toEqual([
+    "create",
+    "approve",
+    "fund",
+    "activate",
+  ]);
+  expect(saved.action).toBe("launch");
+  expect(Number(quote.fee)).toBeGreaterThan(0);
   expect(
     (
       await request(`/campaigns/${created.id}/actions`, {
@@ -284,4 +298,35 @@ it("discovery excludes earned campaigns and marks collected spots in multi-drop 
   expect(detail.spots.find((s: { id: string }) => s.id === spot).claimed).toBe(
     true,
   );
+});
+
+it("reviews creator management fees and requires fresh OTP for confirmation", async () => {
+  const created = await (await request("/campaigns", campaign())).json();
+  sql.prepare("UPDATE event SET status='active' WHERE id=?").run(created.id);
+  const q = await (
+    await request(`/campaigns/${created.id}/quote`, { action: "pause" })
+  ).json();
+  expect(q.action).toBe("pause");
+  expect(q.amount).toBe(0);
+  state.createdAt = Date.now() - 600000;
+  expect(
+    (
+      await request(`/campaigns/${created.id}/actions`, {
+        action: "pause",
+        quoteId: q.id,
+      })
+    ).status,
+  ).toBe(401);
+  state.createdAt = Date.now();
+  expect(
+    (
+      await request(`/campaigns/${created.id}/actions`, {
+        action: "pause",
+        quoteId: q.id,
+      })
+    ).status,
+  ).toBe(202);
+  expect(
+    sql.prepare("SELECT * FROM wallet_lock WHERE user_id='a'").get(),
+  ).toBeTruthy();
 });

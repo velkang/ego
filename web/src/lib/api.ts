@@ -7,11 +7,12 @@ const messages: Record<string, string> = {
   INVALID_PROOF: "This code or answer is incorrect, expired, or unavailable.",
   PRIZE_NOT_ASSIGNED: "This prize is assigned to a different email address.",
   CREATOR_FUNDING_REQUIRED:
-    "The creator must authorize funding from their wallet.",
+    "Manage this campaign from its creator’s account in Activity.",
   INVALID_RECIPIENT: "Enter a different, valid receiving wallet address.",
   EVENT_OPERATION_PENDING:
     "This campaign already has an operation in progress.",
-  EVENT_NOT_FOUND: "This campaign could not be found. Check the link and try again.",
+  EVENT_NOT_FOUND:
+    "This campaign could not be found. Check the link and try again.",
   LOCATION_REQUIRED: "Turn on location to claim this money drop.",
   SIGN_IN_REQUIRED: "Sign in to collect this drop.",
   OPERATOR_REQUIRED: "This page is for the Ego team.",
@@ -59,9 +60,7 @@ export async function api<T>(
       headers: { "Content-Type": "application/json", ...options.headers },
     });
   } catch {
-    throw new Error(
-      "Couldn’t reach Ego. Check your connection and try again.",
-    );
+    throw new Error("Couldn’t reach Ego. Check your connection and try again.");
   }
   const body = await response.json().catch(() => {
     throw new RequestError("SERVICE_UNAVAILABLE", response.status);

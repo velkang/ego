@@ -36,13 +36,7 @@ export function navigate(path: string, replace = false) {
     else history.pushState({}, "", path);
     window.dispatchEvent(new PopStateEvent("popstate"));
   };
-  // Wallet drawers keep the same page mounted and use their own sheet motion.
-  if (
-    replace ||
-    path.startsWith("/wallet/") ||
-    window.location?.pathname.startsWith("/wallet/")
-  )
-    update();
+  if (replace) update();
   else
     transition(
       update,

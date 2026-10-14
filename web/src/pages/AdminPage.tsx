@@ -1,3 +1,4 @@
+import { Link } from "../components/Link";
 import { useEffect, useState } from "react";
 import { formatUSDC } from "@jovva/chain";
 import { api, post } from "../lib/api";
@@ -40,18 +41,6 @@ export function AdminPage() {
     }, 10000);
     return () => clearInterval(timer);
   }, []);
-  async function run(path: string, body?: unknown) {
-    setBusy(true);
-    setError("");
-    try {
-      await post(path, body);
-      await load();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
   async function create(form: HTMLFormElement) {
     setBusy(true);
     setError("");
@@ -299,94 +288,9 @@ export function AdminPage() {
                     : "No operation pending"}
               </p>
               <div className="admin-actions">
-                {event.status === "draft" && (
-                  <button
-                    className="button primary"
-                    disabled={busy || !!pending}
-                    onClick={() =>
-                      void run(`/admin/events/${event.id}/actions`, {
-                        action: "launch",
-                      })
-                    }
-                  >
-                    Fund & activate
-                  </button>
-                )}
-                {event.status === "active" && (
-                  <button
-                    className="button secondary"
-                    disabled={busy || !!pending}
-                    onClick={() =>
-                      void run(`/admin/events/${event.id}/actions`, {
-                        action: "pause",
-                      })
-                    }
-                  >
-                    Pause claims
-                  </button>
-                )}
-                {event.status === "paused" && (
-                  <button
-                    className="button primary"
-                    disabled={busy || !!pending}
-                    onClick={() =>
-                      void run(`/admin/events/${event.id}/actions`, {
-                        action: "resume",
-                      })
-                    }
-                  >
-                    Resume claims
-                  </button>
-                )}
-                {!["draft", "closed"].includes(event.status) && (
-                  <button
-                    className="button secondary"
-                    disabled={busy || !!pending}
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          "Close this event? Visitors will no longer be able to collect its rewards.",
-                        )
-                      )
-                        void run(`/admin/events/${event.id}/actions`, {
-                          action: "close",
-                        });
-                    }}
-                  >
-                    Close event
-                  </button>
-                )}
-                {(event.status === "closed" ||
-                  (event.status !== "draft" &&
-                    Date.now() >= event.ends_at)) && (
-                  <button
-                    className="button secondary"
-                    disabled={
-                      busy ||
-                      !!pending ||
-                      (latest?.action === "refund" &&
-                        latest.status === "complete")
-                    }
-                    onClick={() =>
-                      void run(`/admin/events/${event.id}/actions`, {
-                        action: "refund",
-                      })
-                    }
-                  >
-                    Recover unused funds
-                  </button>
-                )}
-                {latest?.status === "failed" && !pending && (
-                  <button
-                    className="text-button"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(`/admin/operations/${latest.id}/retry`)
-                    }
-                  >
-                    Retry {latest.phase}
-                  </button>
-                )}
+                <Link className="button secondary" href="/activity">
+                  Manage your campaigns
+                </Link>
               </div>
             </article>
           );

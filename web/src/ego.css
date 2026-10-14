@@ -929,6 +929,10 @@ select:focus {
   font-weight: 500;
   color: var(--ink-2);
 }
+button.action {
+  padding: 0;
+  background: none;
+}
 .action-icon {
   width: 58px;
   height: 58px;

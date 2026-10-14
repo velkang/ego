@@ -93,6 +93,8 @@ export function CampaignPage({
       id: string;
       amount: number;
       fee: string;
+      eventId: string;
+      action: string;
     } | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
@@ -112,7 +114,7 @@ export function CampaignPage({
     if (signedIn) void load();
   }, [signedIn]);
   const confirmedOperations = operations
-    .filter((o) => o.status === "confirmed")
+    .filter((o) => o.status === "complete")
     .map((o) => o.id)
     .join(",");
   useEffect(() => {
@@ -179,10 +181,9 @@ export function CampaignPage({
     setBusy(true);
     setError("");
     try {
-      await post(`/campaigns/${id}/actions`, {
-        action,
-        quoteId: action === "launch" ? quote?.id : undefined,
-      });
+      if (quote?.eventId !== id || quote.action !== action)
+        throw new Error("Review the network fee before confirming.");
+      await post(`/campaigns/${id}/actions`, { action, quoteId: quote.id });
       setQuote(null);
       await load();
     } catch (e) {
@@ -193,12 +194,15 @@ export function CampaignPage({
       setBusy(false);
     }
   }
-  async function review(id: string) {
+  async function review(id: string, action = "launch") {
     setBusy(true);
     setError("");
     try {
-      const q = await post<NonNullable<typeof quote>>(`/campaigns/${id}/quote`);
-      setQuote(q);
+      const q = await post<NonNullable<typeof quote>>(
+        `/campaigns/${id}/quote`,
+        { action },
+      );
+      setQuote({ ...q, eventId: id, action });
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -232,6 +236,51 @@ export function CampaignPage({
     } catch (e) {
       setError((e as Error).message);
     }
+  }
+  function feeReview(id: string) {
+    if (!quote || quote.eventId !== id) return null;
+    const label = (
+      {
+        launch: "funding",
+        pause: "pause",
+        resume: "resume",
+        close: "closure",
+        refund: "refund",
+      } as Record<string, string>
+    )[quote.action];
+    return (
+      <section className="deposit-summary">
+        <h3>Review {label}</h3>
+        {quote.action === "launch" && (
+          <p>Rewards: {formatUSDC(quote.amount)} USDC</p>
+        )}
+        <p>Maximum network fee: {quote.fee} USDC</p>
+        {quote.action === "launch" && (
+          <p>
+            This covers creating, approving, funding, and activating your
+            campaign.
+          </p>
+        )}
+        <button
+          className="button primary"
+          disabled={busy}
+          onClick={() => void action(quote.eventId, quote.action)}
+        >
+          {busy ? (
+            <Spinner inline label="Submitting campaign transaction" />
+          ) : (
+            `Confirm ${label}`
+          )}
+        </button>
+        <button
+          className="text-button"
+          disabled={busy}
+          onClick={() => setQuote(null)}
+        >
+          Cancel
+        </button>
+      </section>
+    );
   }
   const total = drops.reduce((sum, d) => {
     try {
@@ -307,26 +356,7 @@ export function CampaignPage({
                 Review funding
               </button>
             )}
-            {quote && (
-              <>
-                <p>Maximum network fee: {quote.fee} USDC</p>
-                <p>
-                  The rewards will be held in escrow until collected or
-                  refunded.
-                </p>
-                <button
-                  className="button primary"
-                  disabled={busy}
-                  onClick={() => void action(created.id, "launch")}
-                >
-                  {busy ? (
-                    <Spinner inline label="Submitting funding" />
-                  ) : (
-                    "Confirm funding"
-                  )}
-                </button>
-              </>
-            )}
+            {feeReview(created.id)}
             {current?.status === "active" && (
               <Link
                 href={`/events/${created.slug}`}
@@ -690,7 +720,7 @@ export function CampaignPage({
                   <button
                     className="button secondary"
                     disabled={busy}
-                    onClick={() => void action(event.id, "pause")}
+                    onClick={() => void review(event.id, "pause")}
                   >
                     Pause
                   </button>
@@ -699,7 +729,7 @@ export function CampaignPage({
                   <button
                     className="button secondary"
                     disabled={busy}
-                    onClick={() => void action(event.id, "resume")}
+                    onClick={() => void review(event.id, "resume")}
                   >
                     Resume
                   </button>
@@ -708,7 +738,7 @@ export function CampaignPage({
                   <button
                     className="button secondary"
                     disabled={busy}
-                    onClick={() => void action(event.id, "close")}
+                    onClick={() => void review(event.id, "close")}
                   >
                     Close
                   </button>
@@ -717,12 +747,13 @@ export function CampaignPage({
                   <button
                     className="button secondary"
                     disabled={busy}
-                    onClick={() => void action(event.id, "refund")}
+                    onClick={() => void review(event.id, "refund")}
                   >
                     Refund unused
                   </button>
                 )}
               </div>
+              {feeReview(event.id)}
             </article>
           ))}
         </section>

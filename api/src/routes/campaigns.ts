@@ -9,6 +9,7 @@ import { encryptProof, decryptProof, proofHash } from "../proofs";
 import { startOperation, reconcileOperation } from "../operations";
 import {
   fundingQuote,
+  campaignFees,
   requireRecentAuth,
   sufficientBalance,
   maximumFee,
@@ -199,16 +200,40 @@ export function registerCampaignRoutes(app: Hono<AppEnvironment>) {
     const event = (await c.env.DB.prepare("SELECT * FROM event WHERE id = ?")
       .bind(c.req.param("id"))
       .first<EventRow>())!;
-    if (event.status !== "draft")
+    const { action } = z
+      .object({
+        action: z
+          .enum(["launch", "pause", "resume", "close", "refund"])
+          .default("launch"),
+      })
+      .parse(await c.req.json());
+    if (action === "launch" && event.status !== "draft")
       throw new ApiError("INVALID_EVENT_ACTION", 409);
-    const quote = await fundingQuote(c.env, event),
-      id = crypto.randomUUID();
-    await c.env.DB.prepare(
-      "UPDATE event SET funding_fee = ?,funding_quote_id = ?,funding_quote_at = ? WHERE id = ? AND status = 'draft'",
+    if (
+      await c.env.DB.prepare(
+        "SELECT id FROM operation WHERE event_id = ? AND status = 'pending'",
+      )
+        .bind(event.id)
+        .first()
     )
-      .bind(JSON.stringify(quote.parameters), id, Date.now(), event.id)
+      throw new ApiError("EVENT_OPERATION_PENDING", 409);
+    const quote = await fundingQuote(c.env, event, action),
+      id = crypto.randomUUID();
+    const saved = await c.env.DB.prepare(
+      "UPDATE event SET funding_fee = ?,funding_quote_id = ?,funding_quote_at = ? WHERE id = ? AND status = ? AND NOT EXISTS (SELECT 1 FROM operation WHERE event_id = ? AND status = 'pending')",
+    )
+      .bind(
+        JSON.stringify(quote.parameters),
+        id,
+        Date.now(),
+        event.id,
+        event.status,
+        event.id,
+      )
       .run();
-    return c.json({ id, amount: quote.amount, fee: quote.fee });
+    if (saved.meta.changes !== 1)
+      throw new ApiError("EVENT_OPERATION_PENDING", 409);
+    return c.json({ id, action, amount: quote.amount, fee: quote.fee });
   });
   app.post("/v1/campaigns/:id/actions", async (c) => {
     const { action, quoteId } = z
@@ -217,7 +242,7 @@ export function registerCampaignRoutes(app: Hono<AppEnvironment>) {
         quoteId: z.string().uuid().optional(),
       })
       .parse(await c.req.json());
-    if (action === "launch") {
+    {
       requireRecentAuth(c.get("sessionCreatedAt"));
       const event = (await c.env.DB.prepare("SELECT * FROM event WHERE id = ?")
         .bind(c.req.param("id"))
@@ -232,8 +257,11 @@ export function registerCampaignRoutes(app: Hono<AppEnvironment>) {
       await sufficientBalance(
         c.env,
         event.funding_address!,
-        event.budget,
-        maximumFee(JSON.parse(event.funding_fee)) * 2n,
+        action === "launch" ? event.budget : 0,
+        Object.values(campaignFees(event.funding_fee).fees).reduce(
+          (sum, fee) => sum + maximumFee(fee),
+          0n,
+        ),
       );
     }
     const operation = await startOperation(
@@ -280,19 +308,18 @@ export function registerCampaignRoutes(app: Hono<AppEnvironment>) {
     const event = (await c.env.DB.prepare("SELECT * FROM event WHERE id = ?")
       .bind(op.event_id)
       .first<EventRow>())!;
-    if (op.action === "launch" && op.phase !== "activate") {
-      if (!event.funding_fee) throw new ApiError("QUOTE_EXPIRED", 409);
-      await sufficientBalance(
-        c.env,
-        event.funding_address!,
-        op.phase === "activate" ? 0 : event.budget,
-        maximumFee(JSON.parse(event.funding_fee)) *
-          (op.phase === "fund" ? 1n : 2n),
-      );
-    }
+    const quote = campaignFees(op.fee);
+    if (quote.action !== op.action || !quote.fees[op.phase])
+      throw new ApiError("QUOTE_EXPIRED", 409);
+    await sufficientBalance(
+      c.env,
+      event.funding_address!,
+      ["create", "approve", "fund"].includes(op.phase) ? event.budget : 0,
+      maximumFee(quote.fees[op.phase]),
+    );
     try {
       await c.env.DB.batch([
-        ...(op.action === "launch"
+        ...(event.creator_id
           ? [
               c.env.DB.prepare(
                 "INSERT INTO wallet_lock (user_id,operation_id) VALUES (?,?)",

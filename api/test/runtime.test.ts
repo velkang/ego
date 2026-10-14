@@ -75,6 +75,7 @@ beforeAll(async () => {
     "0003_event_slugs.sql",
     "0004_campaigns.sql",
     "0005_funding_quote_binding.sql",
+    "0006_creator_gas.sql",
   ]) {
     const sql = readFileSync(
       new URL(`../migrations/${name}`, import.meta.url),

@@ -27,6 +27,7 @@ beforeEach(() => {
     "0003_event_slugs.sql",
     "0004_campaigns.sql",
     "0005_funding_quote_binding.sql",
+    "0006_creator_gas.sql",
   ])
     sql.exec(
       readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"),
@@ -44,8 +45,16 @@ beforeEach(() => {
       Date.now(),
       creator,
       JSON.stringify({
-        type: "absolute",
-        config: { maxFee: "1", priorityFee: "0.1", gasLimit: "200000" },
+        action: "launch",
+        fees: Object.fromEntries(
+          ["create", "approve", "fund", "activate"].map((phase) => [
+            phase,
+            {
+              type: "absolute",
+              config: { maxFee: "1", priorityFee: "0.1", gasLimit: "200000" },
+            },
+          ]),
+        ),
       }),
     );
   sql
@@ -55,6 +64,10 @@ beforeEach(() => {
     "INSERT INTO spot VALUES ('spot','event','Spot',0,0,50,5000000,1,1)",
   );
   env = { DB: d1(sql) } as Bindings;
+  vi.mocked(rpc).mockReturnValue({
+    getBalance: async () => 100n * 10n ** 18n,
+    getTransactionReceipt: async () => receipt(op().phase as Phase),
+  } as unknown as ReturnType<typeof rpc>);
   vi.mocked(contractTransaction).mockResolvedValue("transaction");
   vi.mocked(circle).mockReturnValue({
     getTransaction: async () => ({
@@ -107,7 +120,7 @@ function receipt(phase: Phase) {
     ],
   };
 }
-it("uses creator fees only for approve/fund and publishes only after activation receipt", async () => {
+it("uses the creator wallet and reviewed fees for all launch phases and publishes only after activation receipt", async () => {
   vi.mocked(rpc).mockReturnValue({
     getBalance: async () => 100n * 10n ** 18n,
     getTransactionReceipt: async () => receipt(op().phase as Phase),
@@ -125,10 +138,10 @@ it("uses creator fees only for approve/fund and publishes only after activation 
   expect(sql.prepare("SELECT * FROM wallet_lock").get()).toBeUndefined();
   const calls = vi.mocked(contractTransaction).mock.calls;
   expect(calls.map((c) => c[5])).toEqual([
-    undefined,
     "creator-wallet",
     "creator-wallet",
-    undefined,
+    "creator-wallet",
+    "creator-wallet",
   ]);
   expect(calls[0][2].at(-2)).toBe(creator);
   expect(calls[0][2].at(-1)).toBe(true);
@@ -152,6 +165,7 @@ it("retains the lock and stable idempotency key after uncertain submission", asy
 it("does not advance on a successful but unrelated receipt", async () => {
   await startOperation(env, "event", "launch", "quote");
   vi.mocked(rpc).mockReturnValue({
+    getBalance: async () => 100n * 10n ** 18n,
     getTransactionReceipt: async () => ({ status: "success", logs: [] }),
   } as unknown as ReturnType<typeof rpc>);
   await expect(reconcileOperation(env, op())).rejects.toThrow(
@@ -179,4 +193,81 @@ it("atomically rejects a replaced funding quote without taking a wallet lock", a
   ).rejects.toMatchObject({ code: "QUOTE_EXPIRED" });
   expect(sql.prepare("SELECT * FROM wallet_lock").get()).toBeUndefined();
   expect(sql.prepare("SELECT * FROM operation").get()).toBeUndefined();
+});
+
+it("charges every management action to its creator and snapshots the reviewed fee", async () => {
+  for (const action of ["pause", "resume", "close", "refund"] as const) {
+    sql.exec("DELETE FROM wallet_lock; DELETE FROM operation;");
+    const quoted = {
+      action,
+      fees: {
+        [action]: {
+          type: "absolute",
+          config: { maxFee: "1", priorityFee: "0.1", gasLimit: "100000" },
+        },
+      },
+    };
+    sql
+      .prepare("UPDATE event SET status=?,funding_fee=?,funding_quote_at=?")
+      .run(
+        action === "resume"
+          ? "paused"
+          : action === "refund"
+            ? "closed"
+            : "active",
+        JSON.stringify(quoted),
+        Date.now(),
+      );
+    await startOperation(env, "event", action, "quote");
+    expect(sql.prepare("SELECT * FROM wallet_lock").get()).toBeTruthy();
+    expect(JSON.parse(op().fee!)).toEqual(quoted);
+    sql.prepare("UPDATE event SET funding_fee='{}'").run();
+    vi.mocked(circle).mockReturnValue({
+      getTransaction: async () => ({
+        data: { transaction: { state: "PENDING" } },
+      }),
+    } as unknown as ReturnType<typeof circle>);
+    await reconcileOperation(env, op());
+    expect(vi.mocked(contractTransaction).mock.lastCall?.[5]).toBe(
+      "creator-wallet",
+    );
+    expect(vi.mocked(contractTransaction).mock.lastCall?.[6]).toEqual(
+      quoted.fees[action],
+    );
+  }
+});
+it("rejects missing or wrong-action quotes before taking a wallet lock", async () => {
+  await expect(startOperation(env, "event", "launch")).rejects.toMatchObject({
+    code: "QUOTE_EXPIRED",
+  });
+  sql.exec("UPDATE event SET status='active'");
+  await expect(
+    startOperation(env, "event", "pause", "quote"),
+  ).rejects.toMatchObject({ code: "QUOTE_EXPIRED" });
+  expect(sql.prepare("SELECT * FROM wallet_lock").get()).toBeUndefined();
+  expect(vi.mocked(contractTransaction)).not.toHaveBeenCalled();
+});
+it("checks the full creator fee budget before registering a campaign", async () => {
+  await startOperation(env, "event", "launch", "quote");
+  vi.mocked(rpc).mockReturnValue({
+    getBalance: async () => 5n * 10n ** 18n,
+  } as unknown as ReturnType<typeof rpc>);
+  await expect(reconcileOperation(env, op())).rejects.toMatchObject({
+    code: "INSUFFICIENT_BALANCE",
+  });
+  expect(vi.mocked(contractTransaction)).not.toHaveBeenCalled();
+  expect(sql.prepare("SELECT * FROM wallet_lock").get()).toBeTruthy();
+});
+
+it("never charges a completed operation again when its quote is resubmitted", async () => {
+  await startOperation(env, "event", "launch", "quote");
+  const original = op();
+  sql.exec(
+    "UPDATE operation SET status='complete'; DELETE FROM wallet_lock; UPDATE event SET status='active';",
+  );
+  expect((await startOperation(env, "event", "launch", "quote")).id).toBe(
+    original.id,
+  );
+  expect(sql.prepare("SELECT COUNT(*) AS n FROM operation").get()?.n).toBe(1);
+  expect(sql.prepare("SELECT * FROM wallet_lock").get()).toBeUndefined();
 });

@@ -52,6 +52,7 @@ export type ClaimRow = {
   updated_at: number;
 };
 export type OperationRow = {
+  fee?: string | null;
   id: string;
   event_id: string;
   action: string;

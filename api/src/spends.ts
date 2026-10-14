@@ -6,6 +6,7 @@ import {
   isAddress,
   decodeEventLog,
   parseAbi,
+  encodeFunctionData,
   type Address,
   type Hex,
 } from "viem";
@@ -14,6 +15,11 @@ import type { AppEnvironment, Bindings } from "./env";
 import type { EventRow } from "./db";
 import { circle, rpc, contractTransaction, ensureWallet } from "./circle";
 import { ApiError } from "./http";
+import {
+  campaignTransaction,
+  launchPhases,
+  type CampaignAction,
+} from "./campaign-transaction";
 export type AbsoluteFee = {
   type: "absolute";
   config: { maxFee: string; priorityFee: string; gasLimit: string };
@@ -35,25 +41,69 @@ export async function sufficientBalance(
   if (balance < BigInt(amount) * 10n ** 12n + fee)
     throw new ApiError("INSUFFICIENT_BALANCE", 409);
 }
-export async function fundingQuote(env: Bindings, event: EventRow) {
-  if (!event.funding_address) throw new ApiError("WALLET_UNAVAILABLE", 503);
+export type CampaignFeeQuote = {
+  action: CampaignAction;
+  fees: Record<string, AbsoluteFee>;
+};
+export function campaignFees(
+  value: string | null | undefined,
+): CampaignFeeQuote {
+  const quote = value ? (JSON.parse(value) as CampaignFeeQuote) : null;
+  if (!quote?.action || !quote.fees) throw new ApiError("QUOTE_EXPIRED", 409);
+  return quote;
+}
+export async function fundingQuote(
+  env: Bindings,
+  event: EventRow,
+  action: CampaignAction = "launch",
+) {
+  if (!event.creator_id || !event.funding_address || !event.funding_wallet_id)
+    throw new ApiError("WALLET_UNAVAILABLE", 503);
   const client = rpc(env);
   const estimate = await client.estimateFeesPerGas();
-  // Conservative gas ceilings allow quoting both calls before escrow registration.
-  const config = {
-    maxFee: formatUnits(estimate.maxFeePerGas * 2n, 9),
-    priorityFee: formatUnits(estimate.maxPriorityFeePerGas, 9),
-    gasLimit: "200000",
-  };
-  const fee: AbsoluteFee = { type: "absolute", config };
-  const totalFee = maximumFee(fee) * 2n;
-  await sufficientBalance(env, event.funding_address, event.budget, totalFee);
+  const phases = action === "launch" ? launchPhases : [action];
+  const fees: Record<string, AbsoluteFee> = {};
+  for (const phase of phases) {
+    // Funding and activation cannot be simulated until registration is mined.
+    let gas = phase === "activate" ? 100000n : 200000n;
+    if (phase === "create" || action !== "launch") {
+      const call = await campaignTransaction(env, event, phase);
+      gas =
+        ((await client.estimateGas({
+          account: event.funding_address as Address,
+          to: call.address,
+          data: encodeFunctionData({
+            abi: parseAbi([`function ${call.signature}`] as string[]),
+            functionName: call.signature.split("(")[0],
+            args: call.parameters,
+          }),
+        })) *
+          12n) /
+          10n +
+        10000n;
+    }
+    fees[phase] = {
+      type: "absolute",
+      config: {
+        maxFee: formatUnits(estimate.maxFeePerGas * 2n, 9),
+        priorityFee: formatUnits(estimate.maxPriorityFeePerGas, 9),
+        gasLimit: String(gas),
+      },
+    };
+  }
+  const totalFee = Object.values(fees).reduce(
+    (sum, fee) => sum + maximumFee(fee),
+    0n,
+  );
+  const amount = action === "launch" ? event.budget : 0;
+  await sufficientBalance(env, event.funding_address, amount, totalFee);
   return {
-    amount: event.budget,
+    amount,
     fee: formatUnits(totalFee, 18),
-    parameters: fee,
+    parameters: { action, fees } satisfies CampaignFeeQuote,
   };
 }
+
 type Spend = {
   id: string;
   user_id: string;

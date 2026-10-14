@@ -8,7 +8,6 @@ import {
   Eye,
   EyeOff,
   Plus,
-  RefreshCw,
 } from "lucide-react";
 import { formatUSDC, explorerTransaction } from "@jovva/chain";
 import { post } from "../lib/api";
@@ -23,11 +22,13 @@ export function WalletPage({
   accountId,
   requestSignIn,
   refreshKey = 0,
+  onAction,
 }: {
   signedIn: boolean;
   accountId: string;
   requestSignIn: () => void;
   refreshKey?: number;
+  onAction: (action: "send" | "receive") => void;
 }) {
   const generation = useRef(0);
   const [data, setData] = useState<WalletSnapshot | null>(null),
@@ -57,16 +58,15 @@ export function WalletPage({
         result = await readWallet(accountId);
       }
       if (current === generation.current) {
-        if (result.balanceError && quiet) {
-          setError("Couldn’t update your balance. We’ll retry automatically.");
-        } else {
+        if (!result.balanceError || !quiet) {
           setData(result);
           setError("");
         }
       }
       return !result.balanceError;
     } catch (e) {
-      if (current === generation.current) setError((e as Error).message);
+      if (current === generation.current && !quiet)
+        setError((e as Error).message);
       return false;
     } finally {
       if (current === generation.current) setBusy(false);
@@ -130,9 +130,7 @@ export function WalletPage({
           )}
           {data?.wallet && data.balance === null && (
             <span className="balance-address" role="status">
-              {!busy || data.balanceError
-                ? "Balance unavailable. Try refreshing."
-                : null}
+              {!busy || data.balanceError ? "Balance unavailable." : null}
             </span>
           )}
           <span className="balance-address">
@@ -153,9 +151,29 @@ export function WalletPage({
         </button>
       )}
       <div className="actions">
+        <button
+          type="button"
+          className="action"
+          onClick={() => onAction("send")}
+          aria-haspopup="dialog"
+        >
+          <span className="action-icon">
+            <ArrowUpRight size={22} />
+          </span>
+          Send
+        </button>
+        <button
+          type="button"
+          className="action"
+          onClick={() => onAction("receive")}
+          aria-haspopup="dialog"
+        >
+          <span className="action-icon">
+            <ArrowDownLeft size={22} />
+          </span>
+          Receive
+        </button>
         {[
-          { href: "/wallet/send", icon: ArrowUpRight, label: "Send" },
-          { href: "/wallet/receive", icon: ArrowDownLeft, label: "Receive" },
           { href: "/explore", icon: Compass, label: "Hunt" },
           { href: "/hide", icon: Plus, label: "Hide" },
         ].map(({ href, icon: Icon, label }) => (
@@ -214,9 +232,7 @@ export function WalletPage({
           busy ? (
             <Spinner label="Loading collection" />
           ) : (
-            <p role="status">
-              Your collection couldn’t load. Refresh your wallet to try again.
-            </p>
+            <p role="status">Your collection couldn’t load.</p>
           )
         ) : confirmed.length ? (
           <div className="collection-scroll">
@@ -268,22 +284,6 @@ export function WalletPage({
               </div>
             ))}
         </section>
-      )}
-      {signedIn && (
-        <button
-          className="text-button"
-          disabled={busy}
-          onClick={() => void load(true)}
-        >
-          {busy ? (
-            <Spinner inline label="Refreshing wallet" />
-          ) : (
-            <>
-              <RefreshCw size={16} />
-              Refresh wallet
-            </>
-          )}
-        </button>
       )}
     </main>
   );

@@ -164,6 +164,45 @@ body {
   padding: 0 14px;
   font-size: 13px;
 }
+.account-dropdown {
+  position: fixed;
+  left: auto;
+  bottom: auto;
+  margin: 0;
+  width: min(260px, calc(100vw - 24px));
+  padding: 8px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+}
+.account-email {
+  padding: 10px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+.account-sign-out {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: transparent;
+  text-align: left;
+}
+.account-sign-out:hover,
+.account-sign-out:focus-visible {
+  background: var(--surface-2);
+}
+.account-error {
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--ink-2);
+}
 .brand-dot {
   margin-left: 3px;
 }

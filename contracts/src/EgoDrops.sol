@@ -54,6 +54,10 @@ contract EgoDrops {
         if (msg.sender != operator) revert Unauthorized();
         _;
     }
+    modifier onlyFunder(bytes32 id) {
+        if (msg.sender != events[id].funder) revert Unauthorized();
+        _;
+    }
     modifier nonReentrant() {
         if (entered) revert InvalidState();
         entered = true;
@@ -87,7 +91,8 @@ contract EgoDrops {
         uint32[] calldata capacities,
         address funder,
         bool single
-    ) external nonReentrant onlyOperator {
+    ) external nonReentrant {
+        if (msg.sender != funder) revert Unauthorized();
         _create(id, startsAt, endsAt, spotIds, amounts, capacities, funder, single);
     }
 
@@ -140,7 +145,7 @@ contract EgoDrops {
         if (!usdc.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
     }
 
-    function activate(bytes32 id) external nonReentrant onlyOperator {
+    function activate(bytes32 id) external nonReentrant onlyFunder(id) {
         Event storage e = events[id];
         // Activation must be included before the campaign expiry.
         // forge-lint: disable-next-line(block-timestamp)
@@ -151,21 +156,21 @@ contract EgoDrops {
         emit Activated(id);
     }
 
-    function setPaused(bytes32 id, bool paused) external nonReentrant onlyOperator {
+    function setPaused(bytes32 id, bool paused) external nonReentrant onlyFunder(id) {
         Event storage e = events[id];
         if (!e.active || e.closed) revert InvalidState();
         e.paused = paused;
         emit Paused(id, paused);
     }
 
-    function close(bytes32 id) external nonReentrant onlyOperator {
+    function close(bytes32 id) external nonReentrant onlyFunder(id) {
         Event storage e = events[id];
         if (e.endsAt == 0 || e.closed) revert InvalidState();
         e.closed = true;
         emit Closed(id);
     }
 
-    function refund(bytes32 id) external nonReentrant onlyOperator {
+    function refund(bytes32 id) external nonReentrant onlyFunder(id) {
         Event storage e = events[id];
         // Closing permits an early refund; otherwise expiry is inclusive.
         // forge-lint: disable-next-line(block-timestamp)

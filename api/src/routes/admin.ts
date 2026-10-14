@@ -2,9 +2,9 @@ import type { Hono } from "hono";
 import { z } from "zod";
 import type { AppEnvironment } from "../env";
 import { ApiError } from "../http";
+import { ensureWallet } from "../circle";
 import { isOperator } from "../auth";
 import { availableSlug } from "../slugs";
-import { startOperation, reconcileOperation } from "../operations";
 import type { EventRow, OperationRow } from "../db";
 const coordinates = {
   latitude: z.number().min(-90).max(90),
@@ -63,6 +63,7 @@ export function registerAdminRoutes(app: Hono<AppEnvironment>) {
   });
   app.post("/v1/admin/events", async (c) => {
     const value = eventInput.parse(await c.req.json());
+    const wallet = await ensureWallet(c.env, c.get("user").id);
     const id = crypto.randomUUID();
     const budget = value.spots.reduce(
       (sum, s) => sum + s.amount * s.capacity,
@@ -77,7 +78,7 @@ export function registerAdminRoutes(app: Hono<AppEnvironment>) {
       try {
         await c.env.DB.batch([
           c.env.DB.prepare(
-            "INSERT INTO event (id,title,venue,description,latitude,longitude,starts_at,ends_at,status,budget,created_at,slug) VALUES (?,?,?,?,?,?,?,?,'draft',?,?,?)",
+            "INSERT INTO event (id,title,venue,description,latitude,longitude,starts_at,ends_at,status,budget,created_at,slug,creator_id,funding_wallet_id,funding_address) VALUES (?,?,?,?,?,?,?,?,'draft',?,?,?,?,?,?)",
           ).bind(
             id,
             value.title,
@@ -90,6 +91,9 @@ export function registerAdminRoutes(app: Hono<AppEnvironment>) {
             budget,
             Date.now(),
             slug,
+            c.get("user").id,
+            wallet.id,
+            wallet.address,
           ),
           ...value.spots.map((s) =>
             c.env.DB.prepare(
@@ -118,59 +122,12 @@ export function registerAdminRoutes(app: Hono<AppEnvironment>) {
     }
     throw new ApiError("EVENT_SLUG_UNAVAILABLE", 409);
   });
-  app.post("/v1/admin/events/:id/actions", async (c) => {
-    const { action } = z
-      .object({
-        action: z.enum(["launch", "pause", "resume", "close", "refund"]),
-      })
-      .parse(await c.req.json());
-    if (
-      action === "launch" &&
-      (
-        await c.env.DB.prepare("SELECT creator_id FROM event WHERE id = ?")
-          .bind(c.req.param("id"))
-          .first<{ creator_id: string | null }>()
-      )?.creator_id
-    )
-      throw new ApiError("CREATOR_FUNDING_REQUIRED", 403);
-    const op = await startOperation(c.env, c.req.param("id"), action);
-    c.executionCtx.waitUntil(
-      reconcileOperation(c.env, op).catch(() =>
-        console.error(
-          JSON.stringify({
-            event: "operation_submission_pending",
-            operationId: op.id,
-          }),
-        ),
-      ),
-    );
-    return c.json({ operation: op }, 202);
+  // Team membership never authorizes spending another creator's wallet.
+  // Creator-paid actions use the same ownership, fee review and recent OTP path.
+  app.post("/v1/admin/events/:id/actions", () => {
+    throw new ApiError("CREATOR_FUNDING_REQUIRED", 403);
   });
-  app.post("/v1/admin/operations/:id/retry", async (c) => {
-    const op = await c.env.DB.prepare("SELECT * FROM operation WHERE id = ?")
-      .bind(c.req.param("id"))
-      .first<OperationRow>();
-    if (
-      op &&
-      (
-        await c.env.DB.prepare("SELECT creator_id FROM event WHERE id = ?")
-          .bind(op.event_id)
-          .first<{ creator_id: string | null }>()
-      )?.creator_id &&
-      op.action === "launch"
-    )
-      throw new ApiError("CREATOR_FUNDING_REQUIRED", 403);
-    if (!op || op.status !== "failed")
-      throw new ApiError("OPERATION_NOT_RETRYABLE", 409);
-    try {
-      await c.env.DB.prepare(
-        "UPDATE operation SET status = 'pending',transaction_id = NULL,idempotency_key = ?,error = NULL,updated_at = ? WHERE id = ? AND status = 'failed'",
-      )
-        .bind(crypto.randomUUID(), Date.now(), op.id)
-        .run();
-    } catch {
-      throw new ApiError("EVENT_OPERATION_PENDING", 409);
-    }
-    return c.json({ status: "pending" }, 202);
+  app.post("/v1/admin/operations/:id/retry", () => {
+    throw new ApiError("CREATOR_FUNDING_REQUIRED", 403);
   });
 }

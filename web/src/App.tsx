@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Coins, Compass, ArrowUpDown, Plus } from "lucide-react";
 import { authClient } from "./lib/auth";
 import { api } from "./lib/api";
@@ -10,6 +10,7 @@ import { Spinner } from "./components/Spinner";
 import { WalletDrawer } from "./components/WalletDrawer";
 import { CreateSheet } from "./components/CreateSheet";
 import { Onboarding } from "./components/Onboarding";
+import { AccountMenu } from "./components/AccountMenu";
 const AppsPage = lazy(() =>
   import("./pages/AppsPage").then((m) => ({ default: m.AppsPage })),
 );
@@ -43,13 +44,9 @@ const tabs = [
 export function App() {
   const path = useRoute(),
     { data: session } = authClient.useSession();
-  const previousPath = useRef(path);
-  const walletAction =
-    path === "/wallet/send"
-      ? "send"
-      : path === "/wallet/receive"
-        ? "receive"
-        : null;
+  const [walletAction, setWalletAction] = useState<"send" | "receive" | null>(
+    null,
+  );
   const [walletRefresh, setWalletRefresh] = useState(0);
   const [creating, setCreating] = useState(false);
   const [showAuth, setShowAuth] = useState(false),
@@ -63,16 +60,15 @@ export function App() {
   const eventRef = /^\/events\/([a-z0-9-]+)$/.exec(path)?.[1],
     mapView = path === "/explore" || !!eventRef;
   useEffect(() => {
-    if (path === "/wallet") navigate("/", true);
+    if (["/wallet", "/wallet/send", "/wallet/receive"].includes(path))
+      navigate("/", true);
     if (path === "/map") navigate("/explore", true);
     setImmersive(false);
-    const wasDrawer = ["/wallet/send", "/wallet/receive"].includes(
-      previousPath.current,
-    );
-    if (!wasDrawer && !walletAction)
-      document.querySelector(".phone-scroll")?.scrollTo(0, 0);
-    previousPath.current = path;
+    document.querySelector(".phone-scroll")?.scrollTo(0, 0);
   }, [path]);
+  useEffect(() => {
+    setWalletAction(null);
+  }, [path, session?.user.id]);
   useEffect(() => {
     if (!session) invalidateWallet();
   }, [session?.user.id]);
@@ -125,13 +121,7 @@ export function App() {
                   </Link>
                 )}
                 {session ? (
-                  <button
-                    className="account-button"
-                    aria-label={`Sign out ${session.user.email}`}
-                    onClick={() => void authClient.signOut()}
-                  >
-                    {session.user.email[0].toUpperCase()}
-                  </button>
+                  <AccountMenu key={session.user.id} email={session.user.email} />
                 ) : (
                   <button
                     className="button secondary"
@@ -157,11 +147,14 @@ export function App() {
             }}
           >
             <Suspense fallback={<Spinner label="Loading page" full />}>
-              {path === "/" || path === "/wallet" || walletAction ? (
+              {["/", "/wallet", "/wallet/send", "/wallet/receive"].includes(
+                path,
+              ) ? (
                 <WalletPage
                   key={session?.user.id ?? "guest"}
                   accountId={session?.user.id ?? "guest"}
                   refreshKey={walletRefresh}
+                  onAction={setWalletAction}
                   {...authProps}
                 />
               ) : path === "/apps" ? (
@@ -265,12 +258,12 @@ export function App() {
             action={walletAction}
             accountId={session?.user.id ?? "guest"}
             {...authProps}
-            onClose={() => navigate("/", true)}
+            onClose={() => setWalletAction(null)}
             onConfirmed={() => setWalletRefresh((value) => value + 1)}
           />
         )}
         {creating && <CreateSheet onClose={() => setCreating(false)} />}
-        {path === "/" && !showAuth && !creating && (
+        {path === "/" && !showAuth && !creating && !walletAction && (
           <Onboarding
             signedIn={!!session}
             requestSignIn={() => setShowAuth(true)}

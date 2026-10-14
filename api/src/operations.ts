@@ -1,11 +1,11 @@
 import { chainIdentifier, USDC_ADDRESS } from "@jovva/chain";
 import { circle, contractTransaction, escrowAddress, rpc } from "./circle";
 import type { Bindings } from "./env";
-import type { EventRow, OperationRow, SpotRow } from "./db";
+import type { EventRow, OperationRow } from "./db";
 import { decodeEventLog, parseAbi, type Hex } from "viem";
-import { maximumFee, sufficientBalance } from "./spends";
+import { campaignFees, maximumFee, sufficientBalance } from "./spends";
 import { ApiError } from "./http";
-const launchPhases = ["create", "approve", "fund", "activate"];
+import { campaignTransaction, launchPhases } from "./campaign-transaction";
 export async function startOperation(
   env: Bindings,
   eventId: string,
@@ -16,12 +16,33 @@ export async function startOperation(
     .bind(eventId)
     .first<EventRow>();
   if (!event) throw new ApiError("EVENT_NOT_FOUND", 404);
+  if (quoteId) {
+    const previous = await env.DB.prepare(
+      "SELECT * FROM operation WHERE event_id = ? AND funding_quote_id = ?",
+    )
+      .bind(eventId, quoteId)
+      .first<OperationRow>();
+    if (previous) {
+      if (previous.action !== action) throw new ApiError("QUOTE_EXPIRED", 409);
+      return previous;
+    }
+  }
   const existing = await env.DB.prepare(
     "SELECT * FROM operation WHERE event_id = ? AND status = 'pending'",
   )
     .bind(eventId)
     .first<OperationRow>();
   if (existing) return existing;
+  if (!event.creator_id || !event.funding_wallet_id || !event.funding_address)
+    throw new ApiError("WALLET_UNAVAILABLE", 503);
+  const quote = campaignFees(event.funding_fee);
+  if (
+    !quoteId ||
+    quote.action !== action ||
+    event.funding_quote_id !== quoteId ||
+    Date.now() - (event.funding_quote_at ?? 0) > 60000
+  )
+    throw new ApiError("QUOTE_EXPIRED", 409);
   const valid =
     action === "launch"
       ? event.status === "draft" && event.ends_at > Date.now()
@@ -40,7 +61,7 @@ export async function startOperation(
     now = Date.now();
   try {
     await env.DB.batch([
-      ...(action === "launch" && event.creator_id
+      ...(event.creator_id
         ? [
             env.DB.prepare(
               "INSERT INTO wallet_lock (user_id,operation_id) VALUES (?,?)",
@@ -48,7 +69,7 @@ export async function startOperation(
           ]
         : []),
       env.DB.prepare(
-        "INSERT INTO operation (id,event_id,action,phase,idempotency_key,status,created_at,updated_at,funding_quote_id) VALUES (?,?,?,?,?,'pending',?,?,?)",
+        "INSERT INTO operation (id,event_id,action,phase,idempotency_key,status,created_at,updated_at,funding_quote_id,fee) VALUES (?,?,?,?,?,'pending',?,?,?,?)",
       ).bind(
         id,
         eventId,
@@ -57,7 +78,8 @@ export async function startOperation(
         crypto.randomUUID(),
         now,
         now,
-        quoteId ?? null,
+        quoteId,
+        event.funding_fee,
       ),
       env.DB.prepare(
         "UPDATE event SET status = CASE WHEN ? = 'launch' THEN 'launching' ELSE status END WHERE id = ?",
@@ -83,70 +105,40 @@ export async function reconcileOperation(env: Bindings, op: OperationRow) {
     .first<EventRow>())!;
   const eventId = chainIdentifier(event.id);
   if (!op.transaction_id) {
+    if (!event.creator_id || !event.funding_wallet_id || !event.funding_address)
+      throw new ApiError("WALLET_UNAVAILABLE", 503);
+    const quote = campaignFees(op.fee);
+    const phases =
+      op.action === "launch"
+        ? launchPhases.slice(
+            launchPhases.indexOf(op.phase as (typeof launchPhases)[number]),
+          )
+        : [op.phase];
     if (
-      ["approve", "fund"].includes(op.phase) &&
-      event.funding_address &&
-      event.funding_fee
-    ) {
-      await sufficientBalance(
-        env,
-        event.funding_address,
-        event.budget,
-        maximumFee(JSON.parse(event.funding_fee)) *
-          (op.phase === "approve" ? 2n : 1n),
-      );
-    }
-    let signature: string,
-      args: unknown[],
-      address = escrowAddress(env);
-    if (op.phase === "create") {
-      const spots = (
-        await env.DB.prepare(
-          "SELECT * FROM spot WHERE event_id = ? ORDER BY id",
-        )
-          .bind(event.id)
-          .all<SpotRow>()
-      ).results;
-      signature = event.funding_address
-        ? "createCampaign(bytes32,uint64,uint64,bytes32[],uint256[],uint32[],address,bool)"
-        : "createEvent(bytes32,uint64,uint64,bytes32[],uint256[],uint32[])";
-      args = [
-        eventId,
-        String(Math.floor(event.starts_at / 1000)),
-        String(Math.floor(event.ends_at / 1000)),
-        spots.map((s) => chainIdentifier(s.id)),
-        spots.map((s) => String(s.amount)),
-        spots.map((s) => String(s.capacity)),
-        ...(event.funding_address
-          ? [event.funding_address, !!event.single_claim]
-          : []),
-      ];
-    } else if (op.phase === "approve") {
-      signature = "approve(address,uint256)";
-      args = [address, String(event.budget)];
-      address = USDC_ADDRESS;
-    } else if (op.phase === "fund") {
-      signature = "fund(bytes32,uint256)";
-      args = [eventId, String(event.budget)];
-    } else if (op.phase === "pause" || op.phase === "resume") {
-      signature = "setPaused(bytes32,bool)";
-      args = [eventId, op.phase === "pause"];
-    } else {
-      signature = `${op.phase}(bytes32)`;
-      args = [eventId];
-    }
+      quote.action !== op.action ||
+      !quote.fees[op.phase] ||
+      phases.some((phase) => !quote.fees[phase])
+    )
+      throw new ApiError("QUOTE_EXPIRED", 409);
+    const remainingFee = phases.reduce(
+      (sum, phase) => sum + maximumFee(quote.fees[phase]),
+      0n,
+    );
+    await sufficientBalance(
+      env,
+      event.funding_address,
+      ["create", "approve", "fund"].includes(op.phase) ? event.budget : 0,
+      remainingFee,
+    );
+    const call = await campaignTransaction(env, event, op.phase);
     const txId = await contractTransaction(
       env,
-      signature,
-      args,
+      call.signature,
+      call.parameters,
       op.idempotency_key,
-      address,
-      ["approve", "fund"].includes(op.phase)
-        ? event.funding_wallet_id || undefined
-        : undefined,
-      ["approve", "fund"].includes(op.phase) && event.funding_fee
-        ? JSON.parse(event.funding_fee)
-        : undefined,
+      call.address,
+      event.funding_wallet_id,
+      quote.fees[op.phase],
     );
     await env.DB.prepare(
       "UPDATE operation SET transaction_id = ?,updated_at = ? WHERE id = ? AND phase = ? AND idempotency_key = ? AND status = 'pending'",
@@ -249,7 +241,9 @@ export async function reconcileOperation(env: Bindings, op: OperationRow) {
   if (!matches) throw new Error("Operation receipt does not match");
   const next =
     op.action === "launch"
-      ? launchPhases[launchPhases.indexOf(op.phase) + 1]
+      ? launchPhases[
+          launchPhases.indexOf(op.phase as (typeof launchPhases)[number]) + 1
+        ]
       : undefined;
   if (next) {
     await env.DB.prepare(

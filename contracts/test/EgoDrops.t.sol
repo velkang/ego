@@ -202,13 +202,13 @@ contract EgoDropsTest {
         bytes32[] memory ids = new bytes32[](2); ids[0] = SPOT; ids[1] = second;
         uint256[] memory amounts = new uint256[](2); amounts[0] = 1e6; amounts[1] = 2e6;
         uint32[] memory capacities = new uint32[](2); capacities[0] = 2; capacities[1] = 1;
-        drops.createCampaign(id,100000,100100,ids,amounts,capacities,creator,single);
+        vm.prank(creator); drops.createCampaign(id,100000,100100,ids,amounts,capacities,creator,single);
         token.mint(creator,4e6); vm.prank(creator); token.approve(address(drops),4e6);
     }
     function testCreatorFundsAndReceivesUnusedRefund() public {
         (bytes32 id,,address creator) = creatorCampaign(false);
-        vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
-        drops.claim(id,SPOT,ACCOUNT,RECIPIENT); drops.close(id); drops.refund(id);
+        vm.prank(creator); drops.fund(id,4e6); vm.prank(creator); drops.activate(id);
+        drops.claim(id,SPOT,ACCOUNT,RECIPIENT); vm.prank(creator); drops.close(id); vm.prank(creator); drops.refund(id);
         require(token.balanceOf(creator) == 3e6);
         require(token.balanceOf(RECIPIENT) == 1e6);
     }
@@ -219,7 +219,7 @@ contract EgoDropsTest {
     }
     function testMultipleDistinctDropsButNeverDuplicateDrop() public {
         (bytes32 id,bytes32 second,address creator) = creatorCampaign(false);
-        vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
+        vm.prank(creator); drops.fund(id,4e6); vm.prank(creator); drops.activate(id);
         drops.claim(id,SPOT,ACCOUNT,RECIPIENT); drops.claim(id,second,ACCOUNT,RECIPIENT);
         vm.expectRevert(EgoDrops.AlreadyClaimed.selector); drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
         require(token.balanceOf(RECIPIENT) == 3e6);
@@ -227,8 +227,31 @@ contract EgoDropsTest {
     }
     function testCreatorSingleRewardPolicyOnchain() public {
         (bytes32 id,bytes32 second,address creator) = creatorCampaign(true);
-        vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
+        vm.prank(creator); drops.fund(id,4e6); vm.prank(creator); drops.activate(id);
         drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
         vm.expectRevert(EgoDrops.AlreadyClaimed.selector); drops.claim(id,second,ACCOUNT,RECIPIENT);
     }
+    function testOnlyCreatorCanRegisterAndManageTheirCampaign() public {
+        (bytes32 id,,address creator) = creatorCampaign(false);
+        vm.expectRevert(EgoDrops.Unauthorized.selector); drops.activate(id);
+        vm.expectRevert(EgoDrops.Unauthorized.selector); drops.setPaused(id, true);
+        vm.expectRevert(EgoDrops.Unauthorized.selector); drops.close(id);
+        vm.expectRevert(EgoDrops.Unauthorized.selector); drops.refund(id);
+        vm.prank(creator); drops.fund(id, 4e6);
+        vm.prank(creator); drops.activate(id);
+        vm.prank(creator); drops.setPaused(id, true);
+        vm.prank(creator); drops.setPaused(id, false);
+        vm.prank(creator); vm.expectRevert(EgoDrops.Unauthorized.selector); drops.claim(id, SPOT, ACCOUNT, RECIPIENT);
+        drops.claim(id, SPOT, ACCOUNT, RECIPIENT);
+        vm.prank(creator); drops.close(id);
+        vm.prank(creator); drops.refund(id);
+    }
+    function testCannotRegisterCampaignForAnotherFunder() public {
+        bytes32[] memory ids = new bytes32[](1); ids[0] = SPOT;
+        uint256[] memory amounts = new uint256[](1); amounts[0] = 1e6;
+        uint32[] memory capacities = new uint32[](1); capacities[0] = 1;
+        vm.expectRevert(EgoDrops.Unauthorized.selector);
+        drops.createCampaign(keccak256("foreign"),100000,100100,ids,amounts,capacities,address(0xCAFE),true);
+    }
+
 }
