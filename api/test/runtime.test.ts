@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { readFileSync } from "node:fs";
+import { unstable_splitSqlQuery as splitSqlQuery } from "wrangler";
 import type { Bindings } from "../src/env";
 vi.mock("../src/circle", () => ({
   ensureWallet: async () => ({
@@ -78,15 +79,8 @@ beforeAll(async () => {
       new URL(`../migrations/${name}`, import.meta.url),
       "utf8",
     );
-    // D1 exec is line-based; complete statements (including triggers) use prepare.
-    const statements = sql
-      .replace(/CREATE TRIGGER[\s\S]*?^END;/gm, (trigger) =>
-        trigger.replaceAll(";", "\u0000"),
-      )
-      .split(";")
-      .map((s) => s.replaceAll("\u0000", ";").trim())
-      .filter(Boolean);
-    for (const statement of statements) await db.prepare(statement).run();
+    // Use the migration runner's parser rather than a separate trigger regex.
+    for (const statement of splitSqlQuery(sql)) await db.prepare(statement).run();
   }
   env = {
     DB: db,
