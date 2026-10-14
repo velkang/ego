@@ -153,14 +153,34 @@ export function createApp() {
     ).results.map(publicClaim);
     if (!wallet?.wallet_id)
       return c.json({ wallet: null, balance: "0", claims });
-    const nativeBalance = await rpc(c.env).getBalance({
-      address: wallet.address as Address,
-    });
-    const balance = formatUnits(nativeBalance, 18);
+    let balance: string | null = null;
+    let balanceUnits: string | null = null;
+    let balanceError: "BALANCE_UNAVAILABLE" | null = null;
+    try {
+      const nativeBalance = await rpc(c.env).getBalance({
+        address: wallet.address as Address,
+      });
+      balance = formatUnits(nativeBalance, 18);
+      balanceUnits = (nativeBalance / 10n ** 12n).toString();
+    } catch (error) {
+      balanceError = "BALANCE_UNAVAILABLE";
+      console.warn(
+        JSON.stringify({
+          event: "wallet_balance_unavailable",
+          method: "eth_getBalance",
+          kind: error instanceof Error ? error.name : "UnknownError",
+          code:
+            error && typeof error === "object" && "code" in error
+              ? error.code
+              : undefined,
+        }),
+      );
+    }
     return c.json({
       wallet: { address: wallet.address },
       balance,
-      balanceUnits: (nativeBalance / 10n ** 12n).toString(),
+      balanceUnits,
+      balanceError,
       claims,
     });
   });

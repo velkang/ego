@@ -76,8 +76,9 @@ export function WalletPage({
   const generation = useRef(0);
   const [data, setData] = useState<{
       wallet: { address: string } | null;
-      balance: string;
-      balanceUnits?: string;
+      balance: string | null;
+      balanceUnits?: string | null;
+      balanceError?: "BALANCE_UNAVAILABLE" | null;
       claims: Claim[];
     } | null>(null),
     [error, setError] = useState(""),
@@ -91,7 +92,16 @@ export function WalletPage({
     try {
       let result = await api<NonNullable<typeof data>>("/wallet");
       if (!result.wallet) {
-        await post("/wallet");
+        const created = await post<{ wallet: { address: string } }>("/wallet");
+        // Provisioning has succeeded even if the subsequent balance read fails.
+        if (current === generation.current)
+          setData({
+            ...result,
+            wallet: created.wallet,
+            balance: null,
+            balanceUnits: null,
+            balanceError: null,
+          });
         result = await api("/wallet");
       }
       if (current === generation.current) setData(result);
@@ -142,13 +152,20 @@ export function WalletPage({
               {hidden ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </span>
-          {data ? (
+          {data && data.balance !== null ? (
             <Amount
               base={data.balanceUnits ?? legacyUnits(data.balance)}
               hidden={hidden}
             />
           ) : (
             <strong className="amount">—</strong>
+          )}
+          {data?.wallet && data.balance === null && (
+            <span className="balance-address" role="status">
+              {busy && !data.balanceError
+                ? "Loading balance…"
+                : "Balance unavailable. Try refreshing."}
+            </span>
           )}
           <span className="balance-address">
             {data?.wallet

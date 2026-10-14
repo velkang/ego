@@ -3,6 +3,7 @@ import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 import { readFileSync } from "node:fs";
 import { unstable_splitSqlQuery as splitSqlQuery } from "wrangler";
 import type { Bindings } from "../src/env";
+const balanceRpc = vi.hoisted(() => vi.fn(async () => 100n * 10n ** 18n));
 vi.mock("../src/circle", () => ({
   ensureWallet: async () => ({
     id: "wallet",
@@ -16,7 +17,7 @@ vi.mock("../src/circle", () => ({
   }),
   contractTransaction: async () => crypto.randomUUID(),
   verifyCircleWebhook: async () => false,
-  rpc: () => ({ getBalance: async () => 100n * 10n ** 18n }),
+  rpc: () => ({ getBalance: balanceRpc }),
 }));
 import webWorker from "../../web/worker";
 import { proofHash } from "../src/proofs";
@@ -229,4 +230,33 @@ it("lets only one of two verified accounts reserve a final shared-code slot", as
         .first<{ count: number }>()
     )?.count,
   ).toBe(1);
+});
+
+it("keeps a provisioned wallet and history available when balance RPC is limited, and recovers on retry", async () => {
+  const me = await (await request("/v1/me")).json();
+  const address = "0x2222222222222222222222222222222222222222";
+  await env.DB.prepare(
+    "INSERT INTO wallet (user_id,idempotency_key,wallet_id,address,created_at) VALUES (?,?,?,?,?)",
+  ).bind(me.user.id, crypto.randomUUID(), "wallet", address, Date.now()).run();
+  const before = await request("/v1/wallet");
+  const history = (await before.json()).claims;
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+  balanceRpc.mockRejectedValueOnce(Object.assign(new Error("RPC limited"), { code: -32005 }));
+  const limited = await request("/v1/wallet");
+  expect(limited.status).toBe(200);
+  expect(await limited.json()).toEqual({
+    wallet: { address }, balance: null, balanceUnits: null,
+    balanceError: "BALANCE_UNAVAILABLE", claims: history,
+  });
+  expect(warn).toHaveBeenCalledWith(expect.stringContaining('"code":-32005'));
+  const recovered = await request("/v1/wallet");
+  expect(recovered.status).toBe(200);
+  expect(await recovered.json()).toMatchObject({
+    wallet: { address }, balance: "100", balanceUnits: "100000000", balanceError: null,
+  });
+  balanceRpc.mockResolvedValueOnce(0n);
+  const empty = await (await request("/v1/wallet")).json();
+  expect(empty).toMatchObject({ balance: "0", balanceUnits: "0", balanceError: null });
+  expect(balanceRpc.mock.calls.length).toBeGreaterThan(0);
+  warn.mockRestore();
 });
