@@ -66,17 +66,12 @@ export function createApp() {
   });
   app.post("/v1/webhooks/circle", async (c) => {
     const raw = await c.req.text();
-    const signature = c.req.header("X-Circle-Signature") || "";
-    const keyId = c.req.header("X-Circle-Key-Id") || "";
-    // Acknowledge unsigned subscription setup probes without processing them.
-    // Unsigned requests never touch D1 or reconcile transactions.
-    if (!signature && !keyId) return c.body(null, 204);
     if (
       !(await verifyCircleWebhook(
         c.env,
         raw,
-        signature,
-        keyId,
+        c.req.header("X-Circle-Signature") || "",
+        c.req.header("X-Circle-Key-Id") || "",
       ))
     )
       throw new ApiError("INVALID_SIGNATURE", 401);
