@@ -27,10 +27,12 @@ export function auth(env: Bindings) {
               "Content-Type": "application/json",
             },
             body: JSON.stringify({
-              from: env.EMAIL_FROM,
+              from: env.EMAIL_FROM.includes("<")
+                ? env.EMAIL_FROM.replace(/^[^<]*</, "Ego <")
+                : `Ego <${env.EMAIL_FROM}>`,
               to: email,
-              subject: "Your Jovva sign-in code",
-              text: `Your Jovva code is ${otp}. It expires in 5 minutes. If you did not request this, ignore this email.`,
+              subject: "Your Ego sign-in code",
+              text: `Your Ego code is ${otp}. It expires in 5 minutes. If you did not request this, ignore this email.`,
             }),
             signal: AbortSignal.timeout(10000),
           });

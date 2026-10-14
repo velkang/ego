@@ -7,7 +7,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { arc, jovvaDropsAbi, chainIdentifier } from "@jovva/chain";
+import { arc, egoDropsAbi, chainIdentifier } from "@jovva/chain";
 import type { Bindings } from "./env";
 import { ApiError, requireConfig } from "./http";
 import type { AbsoluteFee } from "./spends";
@@ -30,7 +30,7 @@ export const rpc = (env: Bindings) =>
     }),
   });
 export function escrowAddress(env: Bindings): Address {
-  const value = requireConfig(env.JOVVA_DROPS_ADDRESS, "ESCROW");
+  const value = requireConfig(env.EGO_DROPS_ADDRESS, "ESCROW");
   if (!/^0x[0-9a-fA-F]{40}$/.test(value))
     throw new ApiError("INVALID_ESCROW_CONFIGURATION", 503);
   return value as Address;
@@ -118,7 +118,7 @@ export async function payoutConfirmed(
       return false;
     try {
       const decoded = decodeEventLog({
-        abi: jovvaDropsAbi,
+        abi: egoDropsAbi,
         data: log.data,
         topics: log.topics,
       });

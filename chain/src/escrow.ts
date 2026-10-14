@@ -1,6 +1,6 @@
 import { keccak256, stringToHex, parseAbi } from "viem";
 export const chainIdentifier = (id: string) => keccak256(stringToHex(id));
-export const jovvaDropsAbi = parseAbi([
+export const egoDropsAbi = parseAbi([
   "function createEvent(bytes32 id,uint64 startsAt,uint64 endsAt,bytes32[] spotIds,uint256[] amounts,uint32[] capacities)",
   "function createCampaign(bytes32 id,uint64 startsAt,uint64 endsAt,bytes32[] spotIds,uint256[] amounts,uint32[] capacities,address funder,bool single)",
   "function claimedDrop(bytes32 eventId,bytes32 spotId,bytes32 accountId) view returns (bool)",

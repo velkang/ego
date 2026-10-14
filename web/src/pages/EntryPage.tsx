@@ -98,7 +98,7 @@ export function EntryPage({
       setEventRef(url.searchParams.get("event") ?? "");
     } catch {
       if (/^[a-z0-9]{32}$/i.test(value)) setProof(value);
-      else setError("This QR code is not a Jovva claim link.");
+      else setError("This QR code is not a Ego claim link.");
     }
   }
   async function collect(spotId?: string, place?: string) {

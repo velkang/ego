@@ -83,7 +83,7 @@ export function AuthDialog({
         <Icon name="close" />
       </button>
       <Coin />
-      <h2 id="auth-title">Sign in to Jovva</h2>
+      <h2 id="auth-title">Sign in to Ego</h2>
       <p>Use your email to open your wallet and collect rewards.</p>
       <form
         onSubmit={(e) => {

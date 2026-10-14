@@ -88,8 +88,8 @@ export function App() {
         <div className={`phone-scroll ${mapView || immersive ? "bleed" : ""}`}>
           {!mapView && !immersive && (
             <header className="topbar">
-              <Link className="brand" href="/" aria-label="Jovva home">
-                jovva
+              <Link className="brand" href="/" aria-label="Ego home">
+                ego
                 <span className="brand-dot" />
               </Link>
               <div className="header-account">

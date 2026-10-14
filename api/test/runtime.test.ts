@@ -93,7 +93,7 @@ beforeAll(async () => {
     APP_ORIGIN: origin,
     BETTER_AUTH_SECRET: "runtime-auth-secret-at-least-32-characters",
     RESEND_API_KEY: "test-resend",
-    EMAIL_FROM: "Jovva <login@example.com>",
+    EMAIL_FROM: "Ego <login@example.com>",
     AUTH_LIMIT: { limit: async () => ({ success: true }) },
     CLAIM_LIMIT: { limit: async () => ({ success: true }) },
     PROOF_SECRET: "proof-secret",

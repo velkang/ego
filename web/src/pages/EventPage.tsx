@@ -359,7 +359,7 @@ export function EventPage({
           </button>
         )}
         <p className="hunt-note">
-          Keep Jovva open while you walk. Stay within the venue’s public areas.
+          Keep Ego open while you walk. Stay within the venue’s public areas.
         </p>
       </main>
     );

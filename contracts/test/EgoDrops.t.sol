@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
-import {JovvaDrops} from "../src/JovvaDrops.sol";
+import {EgoDrops} from "../src/EgoDrops.sol";
 
 interface TestVm {
     function warp(uint256) external;
@@ -26,7 +26,7 @@ contract MockUSDC {
         fail = value;
     }
 
-    function transfer(address to, uint256 amount) external returns (bool) {
+    function transfer(address to, uint256 amount) public virtual returns (bool) {
         if (fail) return false;
         require(balanceOf[msg.sender] >= amount);
         balanceOf[msg.sender] -= amount;
@@ -34,7 +34,7 @@ contract MockUSDC {
         return true;
     }
 
-    function transferFrom(address from, address to, uint256 amount) external returns (bool) {
+    function transferFrom(address from, address to, uint256 amount) public virtual returns (bool) {
         if (fail) return false;
         require(allowance[from][msg.sender] >= amount && balanceOf[from] >= amount);
         allowance[from][msg.sender] -= amount;
@@ -44,10 +44,10 @@ contract MockUSDC {
     }
 }
 
-contract JovvaDropsTest {
+contract EgoDropsTest {
     TestVm constant vm = TestVm(address(uint160(uint256(keccak256("hevm cheat code")))));
     MockUSDC token;
-    JovvaDrops drops;
+    EgoDrops drops;
     bytes32 constant EVENT = keccak256("event");
     bytes32 constant SPOT = keccak256("spot");
     bytes32 constant ACCOUNT = keccak256("account");
@@ -56,7 +56,7 @@ contract JovvaDropsTest {
     function setUp() public {
         vm.warp(100000);
         token = new MockUSDC();
-        drops = new JovvaDrops(address(token), address(this));
+        drops = new EgoDrops(address(token), address(this));
         token.mint(address(this), 100e6);
         token.approve(address(drops), type(uint256).max);
         create(EVENT, 2);
@@ -89,28 +89,28 @@ contract JovvaDropsTest {
     function testDuplicateAccountAcrossSpotsRejected() public {
         launch();
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
-        vm.expectRevert(JovvaDrops.AlreadyClaimed.selector);
+        vm.expectRevert(EgoDrops.AlreadyClaimed.selector);
         drops.claim(EVENT, SPOT, ACCOUNT, address(123));
     }
 
     function testUnauthorizedPayoutRejected() public {
         launch();
         vm.prank(RECIPIENT);
-        vm.expectRevert(JovvaDrops.Unauthorized.selector);
+        vm.expectRevert(EgoDrops.Unauthorized.selector);
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
     }
 
     function testCannotActivateUnderfunded() public {
         drops.fund(EVENT, 1e6);
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.activate(EVENT);
     }
 
     function testCannotOverfundOrFundAfterActivation() public {
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.fund(EVENT, 3e6);
         launch();
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.fund(EVENT, 1);
     }
 
@@ -118,30 +118,30 @@ contract JovvaDropsTest {
         launch();
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
         drops.claim(EVENT, SPOT, bytes32(uint256(2)), RECIPIENT);
-        vm.expectRevert(JovvaDrops.Exhausted.selector);
+        vm.expectRevert(EgoDrops.Exhausted.selector);
         drops.claim(EVENT, SPOT, bytes32(uint256(3)), RECIPIENT);
     }
 
     function testPausedAndClosedRejectClaims() public {
         launch();
         drops.setPaused(EVENT, true);
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
         drops.setPaused(EVENT, false);
         drops.close(EVENT);
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
     }
 
     function testExpiryRejectsClaimAndRefunds() public {
         launch();
         vm.warp(100100);
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
         uint256 beforeBalance = token.balanceOf(address(this));
         drops.refund(EVENT);
         require(token.balanceOf(address(this)) == beforeBalance + 2e6);
-        vm.expectRevert(JovvaDrops.InvalidState.selector);
+        vm.expectRevert(EgoDrops.InvalidState.selector);
         drops.refund(EVENT);
     }
 
@@ -158,7 +158,7 @@ contract JovvaDropsTest {
     function testTransferFailureRollsBackClaim() public {
         launch();
         token.setFail(true);
-        vm.expectRevert(JovvaDrops.TransferFailed.selector);
+        vm.expectRevert(EgoDrops.TransferFailed.selector);
         drops.claim(EVENT, SPOT, ACCOUNT, RECIPIENT);
         require(!drops.hasClaimed(EVENT, ACCOUNT));
         (, uint32 remaining) = drops.spots(EVENT, SPOT);
@@ -180,7 +180,7 @@ contract JovvaDropsTest {
     }
 
     function testDuplicateConfigurationRejected() public {
-        vm.expectRevert(JovvaDrops.InvalidConfiguration.selector);
+        vm.expectRevert(EgoDrops.InvalidConfiguration.selector);
         create(EVENT, 1);
     }
 
@@ -214,14 +214,14 @@ contract JovvaDropsTest {
     }
     function testOnlyRecordedCreatorCanFund() public {
         (bytes32 id,,) = creatorCampaign(false);
-        vm.expectRevert(JovvaDrops.Unauthorized.selector); drops.fund(id,4e6);
-        vm.prank(address(0xBAD)); vm.expectRevert(JovvaDrops.Unauthorized.selector); drops.fund(id,4e6);
+        vm.expectRevert(EgoDrops.Unauthorized.selector); drops.fund(id,4e6);
+        vm.prank(address(0xBAD)); vm.expectRevert(EgoDrops.Unauthorized.selector); drops.fund(id,4e6);
     }
     function testMultipleDistinctDropsButNeverDuplicateDrop() public {
         (bytes32 id,bytes32 second,address creator) = creatorCampaign(false);
         vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
         drops.claim(id,SPOT,ACCOUNT,RECIPIENT); drops.claim(id,second,ACCOUNT,RECIPIENT);
-        vm.expectRevert(JovvaDrops.AlreadyClaimed.selector); drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
+        vm.expectRevert(EgoDrops.AlreadyClaimed.selector); drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
         require(token.balanceOf(RECIPIENT) == 3e6);
         require(drops.claimedDrop(id,SPOT,ACCOUNT));
     }
@@ -229,6 +229,6 @@ contract JovvaDropsTest {
         (bytes32 id,bytes32 second,address creator) = creatorCampaign(true);
         vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
         drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
-        vm.expectRevert(JovvaDrops.AlreadyClaimed.selector); drops.claim(id,second,ACCOUNT,RECIPIENT);
+        vm.expectRevert(EgoDrops.AlreadyClaimed.selector); drops.claim(id,second,ACCOUNT,RECIPIENT);
     }
 }

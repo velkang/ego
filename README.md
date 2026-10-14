@@ -1,4 +1,4 @@
-# Jovva
+# Ego
 
 A venue-hosted money hunt on Arc. Visitors discover events, walk to reward spots, and collect USDC. One account can win once per event.
 
@@ -28,5 +28,5 @@ Copy `api/.dev.vars.example` to `api/.dev.vars` and configure:
 | `CIRCLE_API_KEY`, `CIRCLE_ENTITY_SECRET` | Circle developer-controlled wallet authorization                 |
 | `CIRCLE_WALLET_SET_ID`                   | Wallet set used for recipients                                   |
 | `CIRCLE_OPERATOR_WALLET_ID`              | Separate funded operator wallet for escrow calls and gas         |
-| `JOVVA_DROPS_ADDRESS`                    | Deployed Arc mainnet escrow address                              |
+| `EGO_DROPS_ADDRESS`                      | Deployed Arc mainnet escrow address                              |
 | `CIRCLE_WEBHOOK_SUBSCRIPTION_ID`         | Expected Circle v2 notification subscription                     |

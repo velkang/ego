@@ -14,7 +14,7 @@ const messages: Record<string, string> = {
   EVENT_NOT_FOUND: "This campaign could not be found. Check the link and try again.",
   LOCATION_REQUIRED: "Turn on location to claim this money drop.",
   SIGN_IN_REQUIRED: "Sign in to collect this drop.",
-  OPERATOR_REQUIRED: "This page is for the Jovva team.",
+  OPERATOR_REQUIRED: "This page is for the Ego team.",
   STALE_LOCATION:
     "Your location reading expired. Try again for a fresh reading.",
   LOCATION_INACCURATE:
@@ -60,7 +60,7 @@ export async function api<T>(
     });
   } catch {
     throw new Error(
-      "Couldn’t reach Jovva. Check your connection and try again.",
+      "Couldn’t reach Ego. Check your connection and try again.",
     );
   }
   const body = await response.json().catch(() => {

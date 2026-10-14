@@ -12,7 +12,7 @@ export type Bindings = {
   CIRCLE_ENTITY_SECRET: string;
   CIRCLE_WALLET_SET_ID: string;
   CIRCLE_OPERATOR_WALLET_ID: string;
-  JOVVA_DROPS_ADDRESS: string;
+  EGO_DROPS_ADDRESS: string;
   CIRCLE_WEBHOOK_SUBSCRIPTION_ID: string;
   ARC_RPC_URL: string;
   AUTH_LIMIT: { limit(input: { key: string }): Promise<{ success: boolean }> };

@@ -14,7 +14,7 @@
     },
   ],
   "vars": {
-    "APP_ORIGIN": "https://jovva-web.velikanghost.workers.dev",
+    "APP_ORIGIN": "https://ego.velkan.xyz",
     "ARC_RPC_URL": "https://rpc.mainnet.arc.io",
   },
   "ratelimits": [

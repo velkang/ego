@@ -7,7 +7,10 @@ interface IERC20 {
 }
 
 /// @notice Creator-funded escrow with operator-verified eligibility and payouts.
-contract JovvaDrops {
+/// @dev Schedules use inclusion-block time, not a guaranteed wall-clock deadline.
+///      Claims are allowed in [startsAt, endsAt); expiry refunds start at endsAt.
+///      Timestamps select eligibility only, never winners, amounts, or randomness.
+contract EgoDrops {
     IERC20 public immutable usdc;
     address public immutable operator;
 
@@ -71,26 +74,42 @@ contract JovvaDrops {
         bytes32[] calldata spotIds,
         uint256[] calldata amounts,
         uint32[] calldata capacities
-    ) external onlyOperator {
+    ) external nonReentrant onlyOperator {
         _create(id, startsAt, endsAt, spotIds, amounts, capacities, msg.sender, true);
     }
 
     function createCampaign(
-        bytes32 id, uint64 startsAt, uint64 endsAt, bytes32[] calldata spotIds,
-        uint256[] calldata amounts, uint32[] calldata capacities, address funder, bool single
-    ) external onlyOperator {
+        bytes32 id,
+        uint64 startsAt,
+        uint64 endsAt,
+        bytes32[] calldata spotIds,
+        uint256[] calldata amounts,
+        uint32[] calldata capacities,
+        address funder,
+        bool single
+    ) external nonReentrant onlyOperator {
         _create(id, startsAt, endsAt, spotIds, amounts, capacities, funder, single);
     }
 
     function _create(
-        bytes32 id, uint64 startsAt, uint64 endsAt, bytes32[] calldata spotIds,
-        uint256[] calldata amounts, uint32[] calldata capacities, address funder, bool single
+        bytes32 id,
+        uint64 startsAt,
+        uint64 endsAt,
+        bytes32[] calldata spotIds,
+        uint256[] calldata amounts,
+        uint32[] calldata capacities,
+        address funder,
+        bool single
     ) private {
         if (
-            funder == address(0) || id == bytes32(0) || events[id].endsAt != 0 || endsAt <= startsAt || endsAt <= block.timestamp
-                || spotIds.length == 0 || spotIds.length > 100 || amounts.length != spotIds.length
-                || capacities.length != spotIds.length
-        ) revert InvalidConfiguration();
+            funder == address(0) || id == bytes32(0) || events[id].endsAt != 0 || endsAt <= startsAt
+                // Expired schedules cannot be created.
+                // forge-lint: disable-next-line(block-timestamp)
+                || endsAt <= block.timestamp || spotIds.length == 0 || spotIds.length > 100
+                || amounts.length != spotIds.length || capacities.length != spotIds.length
+        ) {
+            revert InvalidConfiguration();
+        }
         uint256 required;
         for (uint256 i; i < spotIds.length; ++i) {
             if (spotIds[i] == bytes32(0) || amounts[i] == 0 || capacities[i] == 0 || spots[id][spotIds[i]].amount != 0) revert InvalidConfiguration();
@@ -106,16 +125,25 @@ contract JovvaDrops {
         Event storage e = events[id];
         if (msg.sender != e.funder) revert Unauthorized();
         if (
-            e.endsAt == 0 || e.active || e.closed || block.timestamp >= e.endsAt || amount == 0
-                || e.remaining + amount > e.required
-        ) revert InvalidState();
+            e.endsAt == 0 || e.active || e.closed
+                // Funding must be included before the campaign expiry.
+                // forge-lint: disable-next-line(block-timestamp)
+                || block.timestamp >= e.endsAt || amount == 0 || e.remaining + amount > e.required
+        ) {
+            revert InvalidState();
+        }
         e.remaining += amount;
-        if (!usdc.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
         emit Funded(id, amount);
+        // All mutators hold the lock before this call; only unlock after return.
+        // Callback reentry into every mutator is covered by EgoDropsSecurityTest.
+        // forge-lint: disable-next-line(reentrancy-no-eth)
+        if (!usdc.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
     }
 
-    function activate(bytes32 id) external onlyOperator {
+    function activate(bytes32 id) external nonReentrant onlyOperator {
         Event storage e = events[id];
+        // Activation must be included before the campaign expiry.
+        // forge-lint: disable-next-line(block-timestamp)
         if (e.endsAt == 0 || e.active || e.closed || block.timestamp >= e.endsAt || e.remaining != e.required) {
             revert InvalidState();
         }
@@ -123,48 +151,63 @@ contract JovvaDrops {
         emit Activated(id);
     }
 
-    function setPaused(bytes32 id, bool paused) external onlyOperator {
+    function setPaused(bytes32 id, bool paused) external nonReentrant onlyOperator {
         Event storage e = events[id];
         if (!e.active || e.closed) revert InvalidState();
         e.paused = paused;
         emit Paused(id, paused);
     }
 
-    function close(bytes32 id) external onlyOperator {
+    function close(bytes32 id) external nonReentrant onlyOperator {
         Event storage e = events[id];
         if (e.endsAt == 0 || e.closed) revert InvalidState();
         e.closed = true;
         emit Closed(id);
     }
 
-    function refund(bytes32 id) external onlyOperator nonReentrant {
+    function refund(bytes32 id) external nonReentrant onlyOperator {
         Event storage e = events[id];
+        // Closing permits an early refund; otherwise expiry is inclusive.
+        // forge-lint: disable-next-line(block-timestamp)
         if (e.endsAt == 0 || (!e.closed && block.timestamp < e.endsAt) || e.remaining == 0) revert InvalidState();
         e.closed = true;
         uint256 amount = e.remaining;
         e.remaining = 0;
-        if (!usdc.transfer(e.funder, amount)) revert TransferFailed();
         emit Refunded(id, e.funder, amount);
+        // All mutators hold the lock before this call; only unlock after return.
+        // Callback reentry into every mutator is covered by EgoDropsSecurityTest.
+        // forge-lint: disable-next-line(reentrancy-no-eth)
+        if (!usdc.transfer(e.funder, amount)) revert TransferFailed();
     }
 
     function claim(bytes32 eventId, bytes32 spotId, bytes32 accountId, address recipient)
         external
-        onlyOperator
         nonReentrant
+        onlyOperator
     {
         Event storage e = events[eventId];
         Spot storage s = spots[eventId][spotId];
         if (
-            !e.active || e.paused || e.closed || block.timestamp < e.startsAt || block.timestamp >= e.endsAt
-                || recipient == address(0) || accountId == bytes32(0)
-        ) revert InvalidState();
-        if (claimedDrop[eventId][spotId][accountId] || (onePerAccount[eventId] && hasClaimed[eventId][accountId])) revert AlreadyClaimed();
+            !e.active || e.paused || e.closed
+                // The included block must be in the half-open campaign window.
+                // forge-lint: disable-next-line(block-timestamp)
+                || block.timestamp < e.startsAt || block.timestamp >= e.endsAt || recipient == address(0)
+                || accountId == bytes32(0)
+        ) {
+            revert InvalidState();
+        }
+        if (claimedDrop[eventId][spotId][accountId] || (onePerAccount[eventId] && hasClaimed[eventId][accountId])) {
+            revert AlreadyClaimed();
+        }
         if (s.remaining == 0 || s.amount == 0 || e.remaining < s.amount) revert Exhausted();
         hasClaimed[eventId][accountId] = true;
         claimedDrop[eventId][spotId][accountId] = true;
         s.remaining--;
         e.remaining -= s.amount;
-        if (!usdc.transfer(recipient, s.amount)) revert TransferFailed();
         emit Claimed(eventId, spotId, accountId, recipient, s.amount);
+        // All mutators hold the lock before this call; only unlock after return.
+        // Callback reentry into every mutator is covered by EgoDropsSecurityTest.
+        // forge-lint: disable-next-line(reentrancy-no-eth)
+        if (!usdc.transfer(recipient, s.amount)) revert TransferFailed();
     }
 }
