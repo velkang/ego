@@ -26,6 +26,7 @@ export function EventMap({
   onEventSelect?: (event: Event) => void;
   position: Coordinates | null;
 }) {
+  const rewards = !!event || spots.length > 0;
   const container = useRef<HTMLDivElement>(null);
   const map = useRef<maplibregl.Map | null>(null);
   const callbacks = useRef({ onSelect, onEventSelect });
@@ -54,6 +55,7 @@ export function EventMap({
         const style = await response.json();
         if (!alive) return;
         const center = event ??
+          spots[0] ??
           events[0] ?? { longitude: 3.3966, latitude: 6.4474 };
         instance = new maplibregl.Map({
           container: container.current!,
@@ -68,21 +70,28 @@ export function EventMap({
           "top-right",
         );
         const bounds = new maplibregl.LngLatBounds();
-        for (const item of event ? spots : events) {
+        for (const item of rewards ? spots : events) {
           bounds.extend([item.longitude, item.latitude]);
           const button = document.createElement("button");
-          button.className = event ? "map-pin" : "event-map-pin";
+          button.className = rewards ? "map-pin" : "event-map-pin";
           button.dataset.id = item.id;
           button.setAttribute(
             "aria-label",
-            event
+            rewards
               ? `${item.title}, ${formatUSDC((item as Spot).amount)}, ${(item as Spot).remaining} remaining`
               : `${item.title}, ${(item as Event).venue ?? ""}`,
           );
-          if (event) {
-            button.disabled = (item as Spot).remaining === 0;
+          if (rewards) {
+            button.disabled =
+              (item as Spot).remaining === 0 || !!(item as Spot).claimed;
             button.setAttribute("aria-pressed", String(item.id === selected));
-            button.textContent = formatUSDC((item as Spot).amount);
+            const image = document.createElement("img");
+            image.src = "/coin/front.png";
+            image.alt = "";
+            const label = document.createElement("span");
+            label.className = "pin-amount";
+            label.textContent = formatUSDC((item as Spot).amount);
+            button.append(image, label);
             button.onclick = () => callbacks.current.onSelect?.(item as Spot);
           } else {
             button.textContent = item.title;
@@ -93,7 +102,7 @@ export function EventMap({
             .setLngLat([item.longitude, item.latitude])
             .addTo(instance);
         }
-        if ((event ? spots : events).length)
+        if ((rewards ? spots : events).length)
           instance.fitBounds(bounds, {
             padding:
               container.current!.clientHeight < 400
@@ -142,7 +151,7 @@ export function EventMap({
       position.longitude,
       position.latitude,
     ]);
-    for (const item of event ? spots : events)
+    for (const item of rewards ? spots : events)
       bounds.extend([item.longitude, item.latitude]);
     instance.fitBounds(bounds, {
       padding:
@@ -159,7 +168,7 @@ export function EventMap({
 
   useEffect(() => {
     const instance = map.current;
-    if (!instance || loading || failed || !event) return;
+    if (!instance || loading || failed || !rewards) return;
     container.current
       ?.querySelectorAll<HTMLButtonElement>(".map-pin")
       .forEach((button) => {
@@ -209,7 +218,7 @@ export function EventMap({
         },
       });
     }
-  }, [selected, spots, loading, failed, event?.id]);
+  }, [selected, spots, loading, failed, event?.id, rewards]);
 
   return (
     <div className="map-container">

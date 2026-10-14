@@ -196,4 +196,39 @@ contract JovvaDropsTest {
         require(token.balanceOf(RECIPIENT) == count * 1e6);
         require(token.balanceOf(address(this)) + token.balanceOf(RECIPIENT) == 100e6);
     }
+
+    function creatorCampaign(bool single) internal returns (bytes32 id, bytes32 second, address creator) {
+        id = keccak256("creator-campaign"); second = keccak256("second"); creator = address(0xCAFE);
+        bytes32[] memory ids = new bytes32[](2); ids[0] = SPOT; ids[1] = second;
+        uint256[] memory amounts = new uint256[](2); amounts[0] = 1e6; amounts[1] = 2e6;
+        uint32[] memory capacities = new uint32[](2); capacities[0] = 2; capacities[1] = 1;
+        drops.createCampaign(id,100000,100100,ids,amounts,capacities,creator,single);
+        token.mint(creator,4e6); vm.prank(creator); token.approve(address(drops),4e6);
+    }
+    function testCreatorFundsAndReceivesUnusedRefund() public {
+        (bytes32 id,,address creator) = creatorCampaign(false);
+        vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
+        drops.claim(id,SPOT,ACCOUNT,RECIPIENT); drops.close(id); drops.refund(id);
+        require(token.balanceOf(creator) == 3e6);
+        require(token.balanceOf(RECIPIENT) == 1e6);
+    }
+    function testOnlyRecordedCreatorCanFund() public {
+        (bytes32 id,,) = creatorCampaign(false);
+        vm.expectRevert(JovvaDrops.Unauthorized.selector); drops.fund(id,4e6);
+        vm.prank(address(0xBAD)); vm.expectRevert(JovvaDrops.Unauthorized.selector); drops.fund(id,4e6);
+    }
+    function testMultipleDistinctDropsButNeverDuplicateDrop() public {
+        (bytes32 id,bytes32 second,address creator) = creatorCampaign(false);
+        vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
+        drops.claim(id,SPOT,ACCOUNT,RECIPIENT); drops.claim(id,second,ACCOUNT,RECIPIENT);
+        vm.expectRevert(JovvaDrops.AlreadyClaimed.selector); drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
+        require(token.balanceOf(RECIPIENT) == 3e6);
+        require(drops.claimedDrop(id,SPOT,ACCOUNT));
+    }
+    function testCreatorSingleRewardPolicyOnchain() public {
+        (bytes32 id,bytes32 second,address creator) = creatorCampaign(true);
+        vm.prank(creator); drops.fund(id,4e6); drops.activate(id);
+        drops.claim(id,SPOT,ACCOUNT,RECIPIENT);
+        vm.expectRevert(JovvaDrops.AlreadyClaimed.selector); drops.claim(id,second,ACCOUNT,RECIPIENT);
+    }
 }

@@ -1,3 +1,4 @@
+import type { DropKind } from "@jovva/chain";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema";
 export const database = (binding: D1Database) => drizzle(binding, { schema });
@@ -14,6 +15,14 @@ export type EventRow = {
   status: "draft" | "launching" | "active" | "paused" | "closed";
   budget: number;
   created_at: number;
+  creator_id?: string | null;
+  kind?: DropKind;
+  single_claim?: number;
+  funding_wallet_id?: string | null;
+  funding_address?: string | null;
+  funding_fee?: string | null;
+  funding_quote_id?: string | null;
+  funding_quote_at?: number | null;
 };
 export type SpotRow = {
   id: string;

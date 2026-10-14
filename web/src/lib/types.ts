@@ -1,3 +1,4 @@
+import type { DropKind } from "@jovva/chain";
 export type Event = {
   id: string;
   slug: string;
@@ -14,6 +15,8 @@ export type Event = {
   min_amount?: number;
   max_amount?: number;
   distance?: number | null;
+  kind?: DropKind;
+  single_claim?: number;
 };
 export type Spot = {
   id: string;
@@ -25,6 +28,8 @@ export type Spot = {
   amount: number;
   capacity: number;
   remaining: number;
+  clue?: string;
+  claimed?: boolean;
 };
 export type Claim = {
   id: string;
@@ -35,6 +40,7 @@ export type Claim = {
   transactionHash: string | null;
   error: string | null;
   createdAt: number;
+  confirmedAt?: number | null;
 };
 export type Operation = {
   id: string;

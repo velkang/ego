@@ -1,4 +1,18 @@
 const messages: Record<string, string> = {
+  REAUTH_REQUIRED: "Verify your email again to authorize this payment.",
+  INSUFFICIENT_BALANCE:
+    "Your wallet needs enough USDC for the reward and network fees.",
+  WALLET_BUSY: "Another payment is still processing. Wait for it to finish.",
+  QUOTE_EXPIRED: "This fee quote expired. Review the transfer again.",
+  INVALID_PROOF: "This code or answer is incorrect, expired, or unavailable.",
+  PRIZE_NOT_ASSIGNED: "This prize is assigned to a different email address.",
+  CREATOR_FUNDING_REQUIRED:
+    "The creator must authorize funding from their wallet.",
+  INVALID_RECIPIENT: "Enter a different, valid receiving wallet address.",
+  EVENT_OPERATION_PENDING:
+    "This campaign already has an operation in progress.",
+  EVENT_NOT_FOUND: "This campaign could not be found. Check the link and try again.",
+  LOCATION_REQUIRED: "Turn on location to claim this money drop.",
   SIGN_IN_REQUIRED: "Sign in to collect this drop.",
   OPERATOR_REQUIRED: "This page is for the Jovva team.",
   STALE_LOCATION:

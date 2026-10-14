@@ -4,6 +4,7 @@ export type Bindings = {
   APP_ORIGIN: string;
   BETTER_AUTH_SECRET: string;
   ACCOUNT_HASH_SECRET: string;
+  PROOF_SECRET: string;
   OPERATOR_EMAILS: string;
   RESEND_API_KEY: string;
   EMAIL_FROM: string;
@@ -17,4 +18,7 @@ export type Bindings = {
   AUTH_LIMIT: { limit(input: { key: string }): Promise<{ success: boolean }> };
   CLAIM_LIMIT: { limit(input: { key: string }): Promise<{ success: boolean }> };
 };
-export type AppEnvironment = { Bindings: Bindings; Variables: { user: User } };
+export type AppEnvironment = {
+  Bindings: Bindings;
+  Variables: { user: User; sessionCreatedAt: number };
+};

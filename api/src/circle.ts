@@ -7,9 +7,10 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { arcTestnet, jovvaDropsAbi, chainIdentifier } from "@jovva/chain";
+import { arc, jovvaDropsAbi, chainIdentifier } from "@jovva/chain";
 import type { Bindings } from "./env";
 import { ApiError, requireConfig } from "./http";
+import type { AbsoluteFee } from "./spends";
 import type { ClaimRow } from "./db";
 export function circle(env: Bindings) {
   return initiateDeveloperControlledWalletsClient({
@@ -22,8 +23,8 @@ export function circle(env: Bindings) {
 }
 export const rpc = (env: Bindings) =>
   createPublicClient({
-    chain: arcTestnet,
-    transport: http(env.ARC_RPC_URL || arcTestnet.rpcUrls.default.http[0], {
+    chain: arc,
+    transport: http(env.ARC_RPC_URL || arc.rpcUrls.default.http[0], {
       timeout: 10000,
       retryCount: 1,
     }),
@@ -54,7 +55,7 @@ export async function ensureWallet(env: Bindings, userId: string) {
     return { id: row.wallet_id, address: row.address };
   const response = await circle(env).createWallets({
     walletSetId: env.CIRCLE_WALLET_SET_ID,
-    blockchains: ["ARC-TESTNET"],
+    blockchains: ["ARC"],
     accountType: "EOA",
     count: 1,
     metadata: [{ refId: userId }],
@@ -76,14 +77,16 @@ export async function contractTransaction(
   parameters: unknown[],
   key: string,
   address = escrowAddress(env),
+  walletId = requireConfig(env.CIRCLE_OPERATOR_WALLET_ID, "OPERATOR_WALLET"),
+  fee?: AbsoluteFee,
 ) {
   const response = await circle(env).createContractExecutionTransaction({
-    walletId: requireConfig(env.CIRCLE_OPERATOR_WALLET_ID, "OPERATOR_WALLET"),
+    walletId,
     contractAddress: address,
     abiFunctionSignature: signature,
     abiParameters: parameters,
     idempotencyKey: key,
-    fee: { type: "level", config: { feeLevel: "MEDIUM" } },
+    fee: fee ?? { type: "level", config: { feeLevel: "MEDIUM" } },
   });
   if (!response.data?.id) throw new ApiError("TRANSACTION_UNAVAILABLE", 503);
   return response.data.id;

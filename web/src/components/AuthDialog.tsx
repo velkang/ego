@@ -83,12 +83,8 @@ export function AuthDialog({
         <Icon name="close" />
       </button>
       <Coin />
-      <h2 id="auth-title">
-        A little adventure
-        <br />
-        starts here.
-      </h2>
-      <p>Sign in to collect drops. We’ll take care of your wallet.</p>
+      <h2 id="auth-title">Sign in to Jovva</h2>
+      <p>Use your email to open your wallet and collect rewards.</p>
       <form
         onSubmit={(e) => {
           e.preventDefault();

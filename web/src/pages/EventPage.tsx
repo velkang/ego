@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   distanceMeters,
   formatUSDC,
-  explorerTransaction,
   locationError,
   type LocationEvidence,
 } from "@jovva/chain";
@@ -12,7 +11,10 @@ import { navigate } from "../lib/router";
 import type { Claim, Event, Spot } from "../lib/types";
 import { EventMap } from "../components/EventMap";
 import { Icon } from "../components/Icon";
-import { Coin } from "../components/Coin";
+import { Scene } from "../components/Scene";
+import { ClaimReceipt } from "../components/ClaimReceipt";
+import { HoldButton } from "../components/HoldButton";
+import { Coin, LargeCoin } from "../components/Coin";
 export function EventPage({
   id,
   signedIn,
@@ -36,12 +38,22 @@ export function EventPage({
     [expanded, setExpanded] = useState(false),
     [locating, setLocating] = useState(false);
   const huntSpots = useMemo(() => (selected ? [selected] : []), [selected]);
+  const consumedIntent = useRef(false);
   const previousDistance = useRef<number | null>(null);
   useEffect(() => {
-    onHuntChange(hunting && (!claim || claim.status === "failed"));
+    onHuntChange(hunting || (!!claim && claim.status !== "failed"));
     return () => onHuntChange(false);
   }, [hunting, claim?.status, onHuntChange]);
   useEffect(() => {
+    if (event?.kind && event.kind !== "map") {
+      navigate(
+        event.kind === "prize"
+          ? "/prizes"
+          : `/enter/${event.kind}?event=${event.slug}`,
+        true,
+      );
+      return;
+    }
     if (event?.slug && id !== event.slug)
       navigate(`/events/${event.slug}`, true);
   }, [event?.slug, id]);
@@ -62,6 +74,16 @@ export function EventPage({
     }
   }
 
+  useEffect(() => {
+    if (consumedIntent.current) return;
+    const params = new URLSearchParams(location.hash.slice(1)),
+      spot = spots.find((s) => s.id === params.get("spot"));
+    if (spot) {
+      consumedIntent.current = true;
+      setSelected(spot);
+      if (params.get("hunt") === "1" && !spot.claimed) setHunting(true);
+    }
+  }, [spots]);
   const load = useCallback(async () => {
     const data = await api<{
       event: Event;
@@ -107,32 +129,27 @@ export function EventPage({
       previousDistance.current = null;
     };
   }, [hunting, selected]);
-  useEffect(() => {
-    if (!claim || !["reserved", "submitted"].includes(claim.status)) return;
-    let alive = true;
-    const timer = window.setInterval(() => {
-      void api<{ claim: Claim }>(`/claims/${claim.id}`)
-        .then((data) => {
-          if (alive) {
-            setClaim(data.claim);
-            if (
-              data.claim.status === "confirmed" ||
-              data.claim.status === "failed"
-            )
-              setHunting(false);
-          }
-        })
-        .catch((e) => {
-          if (alive) setError(e.message);
-        });
-    }, 8000);
-    return () => {
-      alive = false;
-      clearInterval(timer);
-    };
-  }, [claim?.id, claim?.status]);
   const distance =
     position && selected ? distanceMeters(position, selected) : null;
+  const bearing =
+    position && selected
+      ? (() => {
+          const a = (position.latitude * Math.PI) / 180,
+            b = (selected.latitude * Math.PI) / 180,
+            delta = ((selected.longitude - position.longitude) * Math.PI) / 180;
+          return (
+            ((Math.atan2(
+              Math.sin(delta) * Math.cos(b),
+              Math.cos(a) * Math.sin(b) -
+                Math.sin(a) * Math.cos(b) * Math.cos(delta),
+            ) *
+              180) /
+              Math.PI +
+              360) %
+            360
+          );
+        })()
+      : 0;
   const nearby =
     position && selected ? !locationError(position, selected) : false;
   const unavailable =
@@ -167,7 +184,7 @@ export function EventPage({
   if (!event)
     return (
       <main className="page">
-        <button className="text-button" onClick={() => navigate("/")}>
+        <button className="text-button" onClick={() => navigate("/explore")}>
           <Icon name="back" />
           All events
         </button>
@@ -178,79 +195,74 @@ export function EventPage({
     );
   if (claim && claim.status !== "failed")
     return (
-      <main className="page claim-page">
-        <button className="text-button" onClick={() => navigate("/")}>
-          <Icon name="back" />
-          All events
-        </button>
-        <div
-          className={`claim-result ${claim.status === "confirmed" ? "confirmed" : ""}`}
-        >
-          <Coin />
-          <h1>
-            {claim.status === "confirmed"
-              ? `You found ${formatUSDC(claim.amount)}.`
-              : "Your drop is on its way."}
-          </h1>
-          <p>
-            {claim.status === "confirmed"
-              ? "Your USDC is now in your wallet."
-              : "Your reward is reserved. We’re waiting for the Arc transaction to finish."}
-          </p>
-          <dl className="receipt">
-            <div>
-              <dt>Found at</dt>
-              <dd>{event.venue}</dd>
-            </div>
-            <div>
-              <dt>Reward</dt>
-              <dd>{formatUSDC(claim.amount)} USDC</dd>
-            </div>
-            <div>
-              <dt>Status</dt>
-              <dd className="receipt-status">
-                <Icon name={claim.status === "confirmed" ? "check" : "clock"} />
-                {claim.status === "confirmed" ? "Confirmed" : "Pending"}
-              </dd>
-            </div>
-          </dl>
-          {claim.transactionHash && (
-            <a
-              className="text-button"
-              href={explorerTransaction(claim.transactionHash)}
-              target="_blank"
-              rel="noreferrer"
-            >
-              View transaction
-              <Icon name="external" size={16} />
-            </a>
-          )}
+      <ClaimReceipt
+        initial={claim}
+        venue={event.venue}
+        onRetry={() => {
+          setClaim(null);
+          setHunting(false);
+          void load();
+        }}
+        onContinue={
+          event.single_claim === 0
+            ? () => {
+                setClaim(null);
+                setSelected(null);
+                setHunting(false);
+                void load();
+              }
+            : undefined
+        }
+      />
+    );
+  if (hunting && selected && nearby)
+    return (
+      <Scene>
+        <div className="scene-top">
+          <button
+            className="icon-button"
+            aria-label="Close hunt"
+            onClick={() => setHunting(false)}
+          >
+            <Icon name="close" />
+          </button>
+          <span className="here-pill">You’re here</span>
+          <span style={{ width: 42 }} />
+        </div>
+        <div className="scene-center">
+          <LargeCoin size={260} entrance="drop" />
+          <div className="ground-ring" aria-hidden="true" />
+        </div>
+        <div className="scene-bottom">
+          <h2>{formatUSDC(selected.amount)} USDC</h2>
+          <p>{selected.title}</p>
           {error && (
-            <p className="error" role="alert">
+            <p className="scene-error" role="alert">
               {error}
             </p>
           )}
-          <button
-            className="button primary full"
-            onClick={() => navigate("/wallet")}
-          >
-            View my wallet
-            <Icon name="wallet" />
-          </button>
-          <button
-            className="button secondary full"
-            onClick={() => navigate("/")}
-          >
-            Explore other events
-          </button>
-          <small>One reward per account, per event.</small>
+          {signedIn ? (
+            <HoldButton
+              variant="ring"
+              disabled={unavailable}
+              busy={busy}
+              onComplete={() => void collect()}
+            >
+              Hold to claim
+            </HoldButton>
+          ) : (
+            <button className="button primary" onClick={requestSignIn}>
+              Sign in to claim
+            </button>
+          )}
+          <p>Release to cancel</p>
         </div>
-      </main>
+      </Scene>
     );
   if (hunting && selected)
     return (
-      <main className="hunt-page page">
-        <div className="hunt-top">
+      <main className={`hunt-page page ${nearby ? "arrived" : ""}`}>
+        <div className="hunt-head">
           <button
             className="icon-button"
             aria-label="Close hunt"
@@ -270,36 +282,45 @@ export function EventPage({
           </div>
           <span className="hunt-top-spacer" />
         </div>
-        {nearby ? (
-          <div className="arrival">
-            <div className="arrival-aura" />
-            <Coin />
-            <div className="coin-ground" />
-            <h2>{formatUSDC(selected.amount)} drop</h2>
-            <p>You’ve reached its claiming area.</p>
-          </div>
-        ) : (
-          <div className="hunt-dial">
-            <span className="dial-pointer" />
-            <span className="dial-coin">
-              <Coin small />
-            </span>
-            <div className="dial-reading">
-              <strong>
+        <div className="dial-wrap">
+          <div className="dial">
+            <span className="dial-ticks" />
+            <span className="dial-ticks major" />
+            <span className="dial-north" />
+            <div
+              className="dial-orbit"
+              style={{ transform: `rotate(${bearing}deg)` }}
+            >
+              <span
+                className="coin-marker"
+                style={{
+                  transform: `translate(-50%,0) rotate(${-bearing}deg)`,
+                }}
+              >
+                <Coin small />
+              </span>
+            </div>
+            <div className="dial-face">
+              <strong className="amount">
                 {distance === null ? "—" : Math.round(distance)}
-                <span>m</span>
+                <span className="cur">m</span>
               </strong>
-              <span className="warm-label">
+              <span className={`dial-trend ${warming ? "" : "cold"}`}>
                 {distance === null
                   ? "Finding your location"
                   : warming
                     ? "Getting warmer"
-                    : "A little further away"}
+                    : "Getting colder"}
               </span>
-              <small>{selected.radius} m claiming area</small>
+              <span className="dial-sub">
+                {position
+                  ? `${["North", "Northeast", "East", "Southeast", "South", "Southwest", "West", "Northwest"][Math.round(bearing / 45) % 8]} · `
+                  : ""}
+                {selected.radius} m claiming area
+              </span>
             </div>
           </div>
-        )}
+        </div>
         <div className="hunt-map">
           <EventMap
             event={event}
@@ -320,20 +341,23 @@ export function EventPage({
             Try an open area.
           </p>
         )}
-        <button
-          className="button primary full hunt-claim"
-          disabled={!nearby || busy || unavailable}
-          onClick={() => void collect()}
-        >
-          {busy
-            ? "Collecting…"
-            : !nearby
-              ? "Walk closer to unlock"
-              : signedIn
-                ? `Collect ${formatUSDC(selected.amount)}`
-                : "Sign in to collect"}
-          <Icon name={nearby ? "wallet" : "locate"} />
-        </button>
+        {nearby && signedIn ? (
+          <HoldButton
+            disabled={unavailable}
+            busy={busy}
+            onComplete={() => void collect()}
+          >
+            Hold to claim {formatUSDC(selected.amount)}
+          </HoldButton>
+        ) : (
+          <button
+            className="button primary"
+            disabled={!nearby || busy || unavailable}
+            onClick={requestSignIn}
+          >
+            {nearby ? "Sign in to claim" : "Walk closer to unlock"}
+          </button>
+        )}
         <p className="hunt-note">
           Keep Jovva open while you walk. Stay within the venue’s public areas.
         </p>
@@ -356,7 +380,7 @@ export function EventPage({
         <button
           className="icon-button"
           aria-label="All events"
-          onClick={() => navigate("/")}
+          onClick={() => navigate("/explore")}
         >
           <Icon name="back" />
         </button>
@@ -423,14 +447,17 @@ export function EventPage({
                 hour: "numeric",
                 minute: "2-digit",
               })}{" "}
-              · One reward per event
+              ·{" "}
+              {event.single_claim === 0
+                ? "One reward per drop"
+                : "One reward per campaign"}
             </p>
             {spots.map((spot) => (
               <button
                 key={spot.id}
                 className={`drop-row ${selected?.id === spot.id ? "selected" : ""}`}
                 aria-pressed={selected?.id === spot.id}
-                disabled={spot.remaining === 0}
+                disabled={spot.remaining === 0 || spot.claimed}
                 onClick={() => {
                   setSelected(spot);
                   setExpanded(false);
@@ -441,9 +468,11 @@ export function EventPage({
                 <span className="drop-row-main">
                   <strong>{spot.title}</strong>
                   <small>
-                    {spot.remaining
-                      ? `${spot.remaining} left · ${spot.radius} m radius`
-                      : "All collected"}
+                    {spot.claimed
+                      ? "Collected by you"
+                      : spot.remaining
+                        ? `${spot.remaining} left · ${spot.radius} m radius`
+                        : "All collected"}
                   </small>
                 </span>
                 <span className="drop-amount">
@@ -479,13 +508,15 @@ export function EventPage({
         {selected && (
           <button
             className="button primary full"
-            disabled={unavailable || selected.remaining === 0}
+            disabled={
+              unavailable || selected.remaining === 0 || selected.claimed
+            }
             onClick={() => {
               setHunting(true);
               setError("");
             }}
           >
-            Start hunt
+            {selected.claimed ? "Already collected" : "Start hunt"}
             <Icon name="compass" />
           </button>
         )}

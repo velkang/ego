@@ -1,28 +1,41 @@
-import { useEffect, useState } from "react";
-import { formatUSDC, type LocationEvidence } from "@jovva/chain";
+import { useEffect, useMemo, useState } from "react";
+import { LocateFixed, Compass } from "lucide-react";
+import {
+  distanceMeters,
+  formatUSDC,
+  type LocationEvidence,
+} from "@jovva/chain";
 import { api } from "../lib/api";
-import type { Event } from "../lib/types";
+import type { Spot } from "../lib/types";
 import { freshLocation, formatDistance } from "../lib/location";
 import { navigate } from "../lib/router";
-import { Icon } from "../components/Icon";
 import { EventMap } from "../components/EventMap";
+import { Coin } from "../components/Coin";
+type Drop = Spot & {
+  event_slug: string;
+  campaign_title: string;
+  venue: string;
+  event_status: string;
+};
 export function HomePage() {
-  const [events, setEvents] = useState<Event[]>([]),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(""),
+  const [drops, setDrops] = useState<Drop[]>([]),
+    [selected, setSelected] = useState<Drop | null>(null),
     [position, setPosition] = useState<LocationEvidence | null>(null),
+    [loading, setLoading] = useState(true),
     [locating, setLocating] = useState(false),
     [expanded, setExpanded] = useState(false),
+    [error, setError] = useState(""),
     [reload, setReload] = useState(0);
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    api<{ events: Event[] }>(
-      `/events${position ? `?latitude=${position.latitude}&longitude=${position.longitude}` : ""}`,
-    )
-      .then((data) => {
+    void api<{ drops: Drop[] }>("/drops")
+      .then((d) => {
         if (alive) {
-          setEvents(data.events);
+          setDrops(d.drops);
+          setSelected((current) =>
+            current ? (d.drops.find((s) => s.id === current.id) ?? null) : null,
+          );
           setError("");
         }
       })
@@ -35,7 +48,18 @@ export function HomePage() {
     return () => {
       alive = false;
     };
-  }, [position, reload]);
+  }, [reload]);
+  const sorted = useMemo(
+    () =>
+      position
+        ? [...drops].sort(
+            (a, b) => distanceMeters(position, a) - distanceMeters(position, b),
+          )
+        : drops,
+    [drops, position],
+  );
+  const distance =
+    position && selected ? distanceMeters(position, selected) : null;
   async function locate() {
     setLocating(true);
     setError("");
@@ -47,34 +71,56 @@ export function HomePage() {
       setLocating(false);
     }
   }
-  const openEvent = (event: Event) => navigate(`/events/${event.slug}`);
+  const select = (spot: Spot) => {
+    setSelected(spot as Drop);
+    setExpanded(false);
+  };
   return (
     <main className="map-page">
-      <EventMap events={events} position={position} onEventSelect={openEvent} />
-      <button
-        className="icon-button map-locate"
-        aria-label="Locate me"
-        disabled={locating}
-        onClick={() => void locate()}
-      >
-        <Icon name="locate" />
-      </button>
+      <EventMap
+        spots={drops}
+        selected={selected?.id ?? null}
+        position={position}
+        onSelect={select}
+      />
+      <div className="map-top">
+        <div className="map-campaign">
+          <Coin small />
+          <div>
+            <strong>{selected?.campaign_title ?? "Money drops"}</strong>
+            <span>
+              {drops.reduce((sum, d) => sum + d.remaining, 0)} rewards on the
+              map
+            </span>
+          </div>
+        </div>
+        <button
+          className="icon-button"
+          aria-label="Locate me"
+          disabled={locating}
+          onClick={() => void locate()}
+        >
+          <LocateFixed size={20} />
+        </button>
+      </div>
       <section
         className={`map-sheet discovery-sheet ${expanded ? "expanded" : ""}`}
-        aria-labelledby="events-title"
+        aria-labelledby="drops-heading"
       >
         <span className="sheet-handle" aria-hidden="true" />
         <div className="sheet-heading">
-          <h1 id="events-title">
-            {position ? "Events near you" : "Explore events"}
-          </h1>
+          <h2 id="drops-heading">
+            {selected
+              ? `${formatUSDC(selected.amount)} USDC`
+              : "Find a money drop"}
+          </h2>
           <button
             className="text-button"
             aria-expanded={expanded}
-            aria-controls="event-list"
-            onClick={() => setExpanded((value) => !value)}
+            aria-controls="drop-list"
+            onClick={() => setExpanded((v) => !v)}
           >
-            {expanded ? "Close list" : "View events"}
+            {expanded ? "Close list" : "View drops"}
           </button>
         </div>
         {error && (
@@ -82,56 +128,74 @@ export function HomePage() {
             {error}
           </p>
         )}
-        <div id="event-list" className="sheet-list">
-          {loading && !events.length ? (
-            <p role="status">Loading events…</p>
-          ) : events.length ? (
-            (expanded ? events : events.slice(0, 1)).map((event) => (
-              <button
-                key={event.id}
-                className="map-event-row"
-                onClick={() => openEvent(event)}
-              >
-                <span className="map-event-main">
-                  <strong>{event.title}</strong>
-                  <span>{event.venue}</span>
-                  <small>
-                    {event.status === "paused"
-                      ? "Paused"
-                      : Date.now() < event.starts_at
-                        ? "Starts soon"
-                        : `${event.remaining} rewards left`}
-                    {event.distance != null
-                      ? ` · ${formatDistance(event.distance)}`
-                      : ""}
-                  </small>
-                </span>
-                <span className="map-event-amount">
-                  {formatUSDC(event.min_amount ?? 0)}–
-                  {formatUSDC(event.max_amount ?? 0)}
-                  <Icon name="arrow" size={18} />
-                </span>
-              </button>
-            ))
-          ) : (
-            <div className="sheet-empty">
+        {selected ? (
+          <>
+            <div className="reward-details">
               <p>
-                {error ? "Events couldn’t load." : "No active events nearby."}
+                {selected.title} · {selected.venue}
               </p>
-              <button
-                className="text-button"
-                onClick={() => setReload((value) => value + 1)}
-              >
-                Refresh events
-              </button>
+              <div className="reward-facts">
+                <span>{selected.remaining} left</span>
+                <span>
+                  {distance !== null
+                    ? `${formatDistance(distance)} away`
+                    : `${selected.radius} m claiming radius`}
+                </span>
+              </div>
             </div>
-          )}
-        </div>
-        {!expanded && events.length > 1 && (
-          <button className="text-button" onClick={() => setExpanded(true)}>
-            View all {events.length} events
-          </button>
+            <button
+              className="button primary"
+              disabled={
+                selected.remaining === 0 || selected.event_status !== "active"
+              }
+              onClick={() =>
+                navigate(
+                  `/events/${selected.event_slug}#spot=${selected.id}&hunt=1`,
+                )
+              }
+            >
+              <Compass size={18} />
+              {selected.event_status === "paused"
+                ? "Claims paused"
+                : selected.remaining === 0
+                  ? "All collected"
+                  : "Start hunt"}
+            </button>
+          </>
+        ) : (
+          <p className="sheet-description">
+            {loading
+              ? "Loading drops…"
+              : drops.length
+                ? "Choose a coin on the map or open the list."
+                : "No drops available to claim right now."}
+          </p>
         )}
+        <div id="drop-list" className="sheet-list" hidden={!expanded}>
+          {sorted.map((d) => (
+            <button
+              className={`drop-row ${selected?.id === d.id ? "selected" : ""}`}
+              aria-pressed={selected?.id === d.id}
+              key={d.id}
+              onClick={() => select(d)}
+            >
+              <Coin small />
+              <span className="drop-row-main">
+                <strong>{d.title}</strong>
+                <small>
+                  {d.venue} · {d.remaining} left
+                  {position
+                    ? ` · ${formatDistance(distanceMeters(position, d))}`
+                    : ""}
+                </small>
+              </span>
+              <strong className="drop-amount">{formatUSDC(d.amount)}</strong>
+            </button>
+          ))}
+        </div>
+        <button className="text-button" onClick={() => setReload((v) => v + 1)}>
+          Refresh availability
+        </button>
       </section>
     </main>
   );

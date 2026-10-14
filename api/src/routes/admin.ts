@@ -10,7 +10,7 @@ const coordinates = {
   latitude: z.number().min(-90).max(90),
   longitude: z.number().min(-180).max(180),
 };
-const eventInput = z
+export const eventInput = z
   .object({
     title: z.string().trim().min(1).max(100),
     venue: z.string().trim().min(1).max(120),
@@ -124,6 +124,15 @@ export function registerAdminRoutes(app: Hono<AppEnvironment>) {
         action: z.enum(["launch", "pause", "resume", "close", "refund"]),
       })
       .parse(await c.req.json());
+    if (
+      action === "launch" &&
+      (
+        await c.env.DB.prepare("SELECT creator_id FROM event WHERE id = ?")
+          .bind(c.req.param("id"))
+          .first<{ creator_id: string | null }>()
+      )?.creator_id
+    )
+      throw new ApiError("CREATOR_FUNDING_REQUIRED", 403);
     const op = await startOperation(c.env, c.req.param("id"), action);
     c.executionCtx.waitUntil(
       reconcileOperation(c.env, op).catch(() =>
@@ -141,6 +150,16 @@ export function registerAdminRoutes(app: Hono<AppEnvironment>) {
     const op = await c.env.DB.prepare("SELECT * FROM operation WHERE id = ?")
       .bind(c.req.param("id"))
       .first<OperationRow>();
+    if (
+      op &&
+      (
+        await c.env.DB.prepare("SELECT creator_id FROM event WHERE id = ?")
+          .bind(op.event_id)
+          .first<{ creator_id: string | null }>()
+      )?.creator_id &&
+      op.action === "launch"
+    )
+      throw new ApiError("CREATOR_FUNDING_REQUIRED", 403);
     if (!op || op.status !== "failed")
       throw new ApiError("OPERATION_NOT_RETRYABLE", 409);
     try {

@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
+import { formatUnits, type Address } from "viem";
 import { z, ZodError } from "zod";
 import type { AppEnvironment, Bindings } from "./env";
 import { auth, isOperator } from "./auth";
 import { ApiError, requireConfig } from "./http";
-import { circle, ensureWallet, verifyCircleWebhook } from "./circle";
+import { circle, ensureWallet, verifyCircleWebhook, rpc } from "./circle";
 import {
   publicClaim,
   reconcileClaim,
@@ -12,17 +13,22 @@ import {
   reserveClaim,
 } from "./claims";
 import { reconcileOperations } from "./operations";
+import { registerCampaignRoutes } from "./routes/campaigns";
+import { registerSpendRoutes, reconcileSpends } from "./spends";
 import { registerEventRoutes } from "./routes/events";
 import { registerAdminRoutes } from "./routes/admin";
 import type { ClaimRow } from "./db";
 const claimInput = z.object({
   spotId: z.string().uuid(),
-  location: z.object({
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
-    accuracy: z.number().min(0),
-    timestamp: z.number().int().positive(),
-  }),
+  location: z
+    .object({
+      latitude: z.number().min(-90).max(90),
+      longitude: z.number().min(-180).max(180),
+      accuracy: z.number().min(0),
+      timestamp: z.number().int().positive(),
+    })
+    .optional(),
+  proof: z.string().max(1000).optional(),
 });
 export function createApp() {
   const app = new Hono<AppEnvironment>();
@@ -47,7 +53,7 @@ export function createApp() {
     );
     return c.json({ error: "SERVICE_UNAVAILABLE" }, 503);
   });
-  app.get("/health", (c) => c.json({ status: "ok", network: "arc-testnet" }));
+  app.get("/health", (c) => c.json({ status: "ok", network: "arc-mainnet" }));
   app.all("/v1/auth/*", async (c) => {
     if (
       !(await c.env.AUTH_LIMIT.limit({
@@ -98,6 +104,7 @@ export function createApp() {
       .first<ClaimRow>();
     if (claim) await reconcileClaim(c.env, claim);
     await reconcileOperations(c.env);
+    await reconcileSpends(c.env);
     await c.env.DB.prepare(
       "INSERT INTO webhook (id,received_at) VALUES (?,?) ON CONFLICT(id) DO NOTHING",
     )
@@ -119,6 +126,7 @@ export function createApp() {
     )
       throw new ApiError("INVALID_ORIGIN", 403);
     c.set("user", session.user);
+    c.set("sessionCreatedAt", new Date(session.session.createdAt).getTime());
     await next();
   });
   app.get("/v1/me", (c) =>
@@ -145,13 +153,16 @@ export function createApp() {
     ).results.map(publicClaim);
     if (!wallet?.wallet_id)
       return c.json({ wallet: null, balance: "0", claims });
-    const response = await circle(c.env).getWalletTokenBalance({
-      id: wallet.wallet_id,
+    const nativeBalance = await rpc(c.env).getBalance({
+      address: wallet.address as Address,
     });
-    const balance =
-      response.data?.tokenBalances?.find((t) => t.token?.symbol === "USDC")
-        ?.amount ?? "0";
-    return c.json({ wallet: { address: wallet.address }, balance, claims });
+    const balance = formatUnits(nativeBalance, 18);
+    return c.json({
+      wallet: { address: wallet.address },
+      balance,
+      balanceUnits: (nativeBalance / 10n ** 12n).toString(),
+      claims,
+    });
   });
   app.use("/v1/claims/*", async (c, next) => {
     if (
@@ -175,6 +186,7 @@ export function createApp() {
       c.get("user").id,
       input.spotId,
       input.location,
+      input.proof,
     );
     c.executionCtx.waitUntil(
       reconcileClaim(c.env, claim).catch(() =>
@@ -207,6 +219,8 @@ export function createApp() {
     );
     return c.json({ claim: publicClaim(row) });
   });
+  registerCampaignRoutes(app);
+  registerSpendRoutes(app);
   registerAdminRoutes(app);
   app.notFound((c) => c.json({ error: "NOT_FOUND" }, 404));
   return app;
@@ -220,9 +234,11 @@ export default {
     ctx: ExecutionContext,
   ) {
     ctx.waitUntil(
-      Promise.all([reconcileClaims(env), reconcileOperations(env)]).then(
-        () => undefined,
-      ),
+      Promise.all([
+        reconcileClaims(env),
+        reconcileOperations(env),
+        reconcileSpends(env),
+      ]).then(() => undefined),
     );
   },
 };

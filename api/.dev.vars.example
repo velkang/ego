@@ -2,6 +2,7 @@ APP_ORIGIN=http://localhost:5173
 OPERATOR_EMAILS=
 BETTER_AUTH_SECRET=replace-with-at-least-32-random-characters
 ACCOUNT_HASH_SECRET=replace-with-a-separate-stable-random-secret
+PROOF_SECRET=replace-with-an-independent-stable-random-secret
 RESEND_API_KEY=
 EMAIL_FROM=Jovva <login@your-verified-domain.com>
 CIRCLE_API_KEY=

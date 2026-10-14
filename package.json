@@ -17,8 +17,9 @@
     "db:migrate:local": "wrangler d1 migrations apply jovva --local -c api/wrangler.jsonc && node api/scripts/backfill-slugs.mjs --local",
     "db:migrate:remote": "wrangler d1 migrations apply jovva --remote -c api/wrangler.jsonc && node api/scripts/backfill-slugs.mjs --remote",
     "contracts:build": "forge build --root contracts",
+    "contracts:deploy": "forge script --root contracts contracts/script/DeployJovvaDrops.s.sol:DeployJovvaDrops --sig \"run(address)\"",
     "contracts:test": "forge test --root contracts",
-    "smoke:local": "node api/scripts/smoke-local.mjs",
+    "smoke:local": "pnpm --dir api exec vitest run test/runtime.test.ts",
     "smoke:arc": "node api/scripts/smoke-arc.mjs"
   },
   "devDependencies": {

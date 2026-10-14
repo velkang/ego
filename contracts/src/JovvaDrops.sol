@@ -6,7 +6,7 @@ interface IERC20 {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
 }
 
-/// @notice Team-operated event escrow. Location eligibility is checked offchain.
+/// @notice Creator-funded escrow with operator-verified eligibility and payouts.
 contract JovvaDrops {
     IERC20 public immutable usdc;
     address public immutable operator;
@@ -29,6 +29,8 @@ contract JovvaDrops {
     mapping(bytes32 => Event) public events;
     mapping(bytes32 => mapping(bytes32 => Spot)) public spots;
     mapping(bytes32 => mapping(bytes32 => bool)) public hasClaimed;
+    mapping(bytes32 => bool) public onePerAccount;
+    mapping(bytes32 => mapping(bytes32 => mapping(bytes32 => bool))) public claimedDrop;
     bool private entered;
     error Unauthorized();
     error InvalidConfiguration();
@@ -70,8 +72,22 @@ contract JovvaDrops {
         uint256[] calldata amounts,
         uint32[] calldata capacities
     ) external onlyOperator {
+        _create(id, startsAt, endsAt, spotIds, amounts, capacities, msg.sender, true);
+    }
+
+    function createCampaign(
+        bytes32 id, uint64 startsAt, uint64 endsAt, bytes32[] calldata spotIds,
+        uint256[] calldata amounts, uint32[] calldata capacities, address funder, bool single
+    ) external onlyOperator {
+        _create(id, startsAt, endsAt, spotIds, amounts, capacities, funder, single);
+    }
+
+    function _create(
+        bytes32 id, uint64 startsAt, uint64 endsAt, bytes32[] calldata spotIds,
+        uint256[] calldata amounts, uint32[] calldata capacities, address funder, bool single
+    ) private {
         if (
-            id == bytes32(0) || events[id].endsAt != 0 || endsAt <= startsAt || endsAt <= block.timestamp
+            funder == address(0) || id == bytes32(0) || events[id].endsAt != 0 || endsAt <= startsAt || endsAt <= block.timestamp
                 || spotIds.length == 0 || spotIds.length > 100 || amounts.length != spotIds.length
                 || capacities.length != spotIds.length
         ) revert InvalidConfiguration();
@@ -81,12 +97,14 @@ contract JovvaDrops {
             spots[id][spotIds[i]] = Spot(amounts[i], capacities[i]);
             required += amounts[i] * capacities[i];
         }
-        events[id] = Event(startsAt, endsAt, required, 0, msg.sender, false, false, false);
+        events[id] = Event(startsAt, endsAt, required, 0, funder, false, false, false);
+        onePerAccount[id] = single;
         emit EventCreated(id, required);
     }
 
-    function fund(bytes32 id, uint256 amount) external onlyOperator nonReentrant {
+    function fund(bytes32 id, uint256 amount) external nonReentrant {
         Event storage e = events[id];
+        if (msg.sender != e.funder) revert Unauthorized();
         if (
             e.endsAt == 0 || e.active || e.closed || block.timestamp >= e.endsAt || amount == 0
                 || e.remaining + amount > e.required
@@ -140,9 +158,10 @@ contract JovvaDrops {
             !e.active || e.paused || e.closed || block.timestamp < e.startsAt || block.timestamp >= e.endsAt
                 || recipient == address(0) || accountId == bytes32(0)
         ) revert InvalidState();
-        if (hasClaimed[eventId][accountId]) revert AlreadyClaimed();
+        if (claimedDrop[eventId][spotId][accountId] || (onePerAccount[eventId] && hasClaimed[eventId][accountId])) revert AlreadyClaimed();
         if (s.remaining == 0 || s.amount == 0 || e.remaining < s.amount) revert Exhausted();
         hasClaimed[eventId][accountId] = true;
+        claimedDrop[eventId][spotId][accountId] = true;
         s.remaining--;
         e.remaining -= s.amount;
         if (!usdc.transfer(recipient, s.amount)) revert TransferFailed();

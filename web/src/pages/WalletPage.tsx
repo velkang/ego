@@ -1,9 +1,71 @@
-import { useEffect, useState } from "react";
-import { formatUSDC, explorerTransaction, arcTestnet } from "@jovva/chain";
+import { useEffect, useRef, useState } from "react";
+import {
+  ArrowDownLeft,
+  ArrowUpRight,
+  ChevronRight,
+  Compass,
+  Gift,
+  Trophy,
+  Eye,
+  EyeOff,
+  Plus,
+  Puzzle,
+  QrCode,
+  Ticket,
+  RefreshCw,
+} from "lucide-react";
+import { formatUSDC, explorerTransaction } from "@jovva/chain";
 import { api, post } from "../lib/api";
 import type { Claim } from "../lib/types";
-import { Icon } from "../components/Icon";
-import { Coin } from "../components/Coin";
+import { Amount } from "../components/Amount";
+import { Coin, LargeCoin } from "../components/Coin";
+import { Link } from "../components/Link";
+const ways = [
+  {
+    href: "/prizes",
+    icon: Gift,
+    title: "Prizes waiting for you",
+    sub: "Claim prizes and bounties with your email",
+  },
+  {
+    href: "/enter/code",
+    icon: Ticket,
+    title: "Enter a code",
+    sub: "From a giveaway, a post or a flyer",
+  },
+  {
+    href: "/enter/qr",
+    icon: QrCode,
+    title: "Scan an event QR",
+    sub: "Scan the code to find your reward",
+  },
+  {
+    href: "/enter/puzzle",
+    icon: Puzzle,
+    title: "Solve a puzzle",
+    sub: "Crack the riddle, keep the coin",
+  },
+];
+const organisers = [
+  {
+    href: "/pay",
+    icon: Trophy,
+    title: "Pay winners",
+    sub: "Fund prizes that winners claim with their email",
+  },
+  {
+    href: "/hide",
+    icon: Plus,
+    title: "Hide money",
+    sub: "Place USDC drops for people to find",
+  },
+  {
+    href: "/create",
+    icon: Ticket,
+    title: "Codes, event QR codes and puzzles",
+    sub: "Giveaways with a code, a scan or an answer",
+  },
+];
 export function WalletPage({
   signedIn,
   requestSignIn,
@@ -11,151 +73,225 @@ export function WalletPage({
   signedIn: boolean;
   requestSignIn: () => void;
 }) {
+  const generation = useRef(0);
   const [data, setData] = useState<{
       wallet: { address: string } | null;
       balance: string;
+      balanceUnits?: string;
       claims: Claim[];
     } | null>(null),
     [error, setError] = useState(""),
-    [busy, setBusy] = useState(false),
-    [copied, setCopied] = useState(false);
+    [hidden, setHidden] = useState(false),
+    [busy, setBusy] = useState(false);
   async function load() {
+    if (!signedIn) return;
+    const current = ++generation.current;
     setBusy(true);
     setError("");
     try {
-      let result = await api<typeof data & {}>("/wallet");
+      let result = await api<NonNullable<typeof data>>("/wallet");
       if (!result.wallet) {
         await post("/wallet");
         result = await api("/wallet");
       }
-      setData(result);
+      if (current === generation.current) setData(result);
     } catch (e) {
-      setError((e as Error).message);
+      if (current === generation.current) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (current === generation.current) setBusy(false);
     }
   }
   useEffect(() => {
     if (signedIn) void load();
+    else setData(null);
+    return () => {
+      generation.current++;
+    };
   }, [signedIn]);
-  if (!signedIn)
-    return (
-      <main className="page">
-        <div className="empty-state">
-          <Coin />
-          <h1>Your adventures add up.</h1>
-          <p>Sign in to see your rewards and your Jovva wallet.</p>
-          <button className="button primary" onClick={requestSignIn}>
-            Sign in
-            <Icon name="arrow" />
+  const confirmed = data?.claims.filter((c) => c.status === "confirmed") ?? [];
+  return (
+    <main className="page wallet-home">
+      <Link href="/explore" className="drop-banner">
+        <Coin small />
+        <div>
+          <strong>Find your next money drop</strong>
+          <span>Open the map to look around</span>
+        </div>
+        <ChevronRight size={20} />
+      </Link>
+      {error && (
+        <div className="error" role="alert">
+          {error}
+          <button
+            className="text-button"
+            disabled={busy}
+            onClick={() => void load()}
+          >
+            Retry
           </button>
         </div>
-      </main>
-    );
-  return (
-    <main className="page wallet-page">
-      <div className="section-heading">
-        <div>
-          <h1>Your little treasury.</h1>
-          <p>The rewards you’ve found along the way.</p>
+      )}
+      <section className="balance" aria-label="Your wallet">
+        <div className="balance-text">
+          <span className="balance-label">
+            Total balance
+            <button
+              onClick={() => setHidden((v) => !v)}
+              aria-label={hidden ? "Show balance" : "Hide balance"}
+            >
+              {hidden ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </span>
+          {data ? (
+            <Amount
+              base={data.balanceUnits ?? legacyUnits(data.balance)}
+              hidden={hidden}
+            />
+          ) : (
+            <strong className="amount">—</strong>
+          )}
+          <span className="balance-address">
+            {data?.wallet
+              ? `${data.wallet.address.slice(0, 6)}…${data.wallet.address.slice(-4)}`
+              : signedIn
+                ? busy
+                  ? "Opening your wallet…"
+                  : "Wallet is unavailable"
+                : "Sign in to open your wallet"}
+          </span>
         </div>
+        <LargeCoin size={132} />
+      </section>
+      {!signedIn && (
+        <button className="button primary" onClick={requestSignIn}>
+          Sign in
+        </button>
+      )}
+      <div className="actions">
+        {[
+          { href: "/wallet/send", icon: ArrowUpRight, label: "Send" },
+          { href: "/wallet/receive", icon: ArrowDownLeft, label: "Receive" },
+          { href: "/explore", icon: Compass, label: "Hunt" },
+          { href: "/hide", icon: Plus, label: "Hide" },
+        ].map(({ href, icon: Icon, label }) => (
+          <Link
+            key={href}
+            href={href}
+            className={`action ${label === "Hunt" ? "main" : ""}`}
+          >
+            <span className="action-icon">
+              <Icon size={22} />
+            </span>
+            {label}
+          </Link>
+        ))}
+      </div>
+      {[
+        { title: "Ways to find money", rows: ways },
+        { title: "For organisers", rows: organisers },
+      ].map(({ title, rows }) => (
+        <section className="section" key={title}>
+          <div className="section-title">
+            <h2>{title}</h2>
+          </div>
+          <div className="list-card">
+            {rows.map(({ href, icon: Icon, title, sub }) => (
+              <Link href={href} className="list-row" key={href}>
+                <span className="row-icon">
+                  <Icon size={19} />
+                </span>
+                <span className="row-main">
+                  <strong>{title}</strong>
+                  <span>{sub}</span>
+                </span>
+                <span className="row-end">
+                  <ChevronRight size={18} />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ))}
+      <section className="section">
+        <div className="section-title">
+          <h2>Your collection</h2>
+          <span>{confirmed.length} found</span>
+        </div>
+        {signedIn && !data ? (
+          <p role="status">
+            {busy
+              ? "Loading your collection…"
+              : "Your collection couldn’t load. Refresh your wallet to try again."}
+          </p>
+        ) : confirmed.length ? (
+          <div className="collection-scroll">
+            {confirmed.map((c) => (
+              <article className="claim-card" key={c.id}>
+                <Coin />
+                <strong>{formatUSDC(c.amount)}</strong>
+                <span>
+                  Collected {new Date(c.createdAt).toLocaleDateString()}
+                </span>
+                {c.transactionHash && (
+                  <a
+                    href={explorerTransaction(c.transactionHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-button"
+                  >
+                    View receipt
+                    <ChevronRight size={16} />
+                  </a>
+                )}
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-collection">
+            <Coin />
+            <h3>Your first find is waiting</h3>
+            <p>Your confirmed rewards become cards in your collection.</p>
+            <Link href="/explore" className="text-button">
+              Take a look around
+              <ChevronRight size={16} />
+            </Link>
+          </div>
+        )}
+      </section>
+      {data?.claims.some((c) => c.status !== "confirmed") && (
+        <section className="section">
+          <h2>Recent claims</h2>
+          {data.claims
+            .filter((c) => c.status !== "confirmed")
+            .map((c) => (
+              <div className="history-row" key={c.id}>
+                <Coin small />
+                <span>
+                  {formatUSDC(c.amount)} ·{" "}
+                  {c.status === "failed" ? "Failed" : "Pending"}
+                </span>
+              </div>
+            ))}
+        </section>
+      )}
+      {signedIn && (
         <button
-          className="icon-button"
-          aria-label="Refresh wallet"
+          className="text-button"
           disabled={busy}
           onClick={() => void load()}
         >
-          <Icon name="locate" />
+          <RefreshCw size={16} />
+          {busy ? "Refreshing…" : "Refresh wallet"}
         </button>
-      </div>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
       )}
-      <section className="wallet-balance">
-        <Coin />
-        <span>USDC balance</span>
-        <strong>{data ? formatUSDC(Number(data.balance) * 1e6) : "—"}</strong>
-
-        {data?.wallet && (
-          <button
-            className="address-button"
-            onClick={() => {
-              void navigator.clipboard
-                .writeText(data.wallet!.address)
-                .then(() => setCopied(true))
-                .catch(() =>
-                  setError(
-                    "Couldn’t copy the address. Open it in the explorer instead.",
-                  ),
-                );
-            }}
-          >
-            {copied
-              ? "Address copied"
-              : `${data.wallet.address.slice(0, 8)}…${data.wallet.address.slice(-6)}`}
-          </button>
-        )}
-        {data?.wallet && (
-          <a
-            className="text-button"
-            href={`${arcTestnet.blockExplorers.default.url}/address/${data.wallet.address}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            View wallet
-            <Icon name="external" size={15} />
-          </a>
-        )}
-      </section>
-      <section className="wallet-history">
-        <h2>Your finds</h2>
-        {busy && !data ? (
-          <p role="status">Opening your wallet…</p>
-        ) : !data?.claims.length ? (
-          <div className="empty-state compact">
-            <Icon name="compass" size={30} />
-            <h3>Your first find is waiting.</h3>
-            <p>Pick an event and follow a drop.</p>
-          </div>
-        ) : (
-          <div>
-            {data.claims.map((claim) => (
-              <div className="history-row" key={claim.id}>
-                <Coin small />
-                <div>
-                  <strong>{formatUSDC(claim.amount)} drop</strong>
-                  <small>
-                    {new Date(claim.createdAt).toLocaleDateString()} ·{" "}
-                    {claim.status === "reserved" || claim.status === "submitted"
-                      ? "Pending"
-                      : claim.status}
-                  </small>
-                </div>
-                {claim.transactionHash ? (
-                  <a
-                    className="icon-button"
-                    href={explorerTransaction(claim.transactionHash)}
-                    target="_blank"
-                    rel="noreferrer"
-                    aria-label="View payout transaction"
-                  >
-                    <Icon name="external" />
-                  </a>
-                ) : (
-                  <Icon
-                    name={claim.status === "confirmed" ? "check" : "clock"}
-                  />
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-      <p className="wallet-disclosure">
-        Jovva manages this wallet through Circle.
-      </p>
     </main>
   );
+}
+
+function legacyUnits(value: string) {
+  const [whole, fraction = ""] = value.split(".");
+  return (
+    BigInt(whole) * 1_000_000n +
+    BigInt(fraction.padEnd(6, "0").slice(0, 6))
+  ).toString();
 }

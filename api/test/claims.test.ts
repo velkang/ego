@@ -1,3 +1,5 @@
+import { d1 } from "./d1";
+import { proofHash, encryptProof } from "../src/proofs";
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
@@ -23,46 +25,6 @@ import {
   payoutConfirmed,
 } from "../src/circle";
 // Real SQLite constraints and atomic transactions mirror D1's batch behavior.
-function d1(sql: DatabaseSync): D1Database {
-  function prepare(query: string) {
-    let args: unknown[] = [];
-    const statement = {
-      bind(...values: unknown[]) {
-        args = values;
-        return statement;
-      },
-      async first() {
-        return sql.prepare(query).get(...(args as never[])) ?? null;
-      },
-      async run() {
-        const result = sql.prepare(query).run(...(args as never[]));
-        return { success: true, meta: { changes: Number(result.changes) } };
-      },
-      async all() {
-        return {
-          results: sql.prepare(query).all(...(args as never[])),
-          success: true,
-        };
-      },
-    };
-    return statement;
-  }
-  return {
-    prepare,
-    async batch(statements: { run(): Promise<unknown> }[]) {
-      sql.exec("BEGIN");
-      try {
-        const results = [];
-        for (const s of statements) results.push(await s.run());
-        sql.exec("COMMIT");
-        return results;
-      } catch (e) {
-        sql.exec("ROLLBACK");
-        throw e;
-      }
-    },
-  } as unknown as D1Database;
-}
 describe("claim reservations", () => {
   let sql: DatabaseSync, env: Bindings;
   const spotId = "11111111-1111-4111-8111-111111111111";
@@ -73,18 +35,20 @@ describe("claim reservations", () => {
       "0001_initial.sql",
       "0002_claim_validation.sql",
       "0003_event_slugs.sql",
+      "0004_campaigns.sql",
+      "0005_funding_quote_binding.sql",
     ])
       sql.exec(
         readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"),
       );
-    env = { DB: d1(sql) } as Bindings;
+    env = { DB: d1(sql), PROOF_SECRET: "test-proof-secret" } as Bindings;
     for (const id of ["a", "b", "c"])
       sql
         .prepare("INSERT INTO user VALUES (?,?,?,1,NULL,?,?)")
         .run(id, id, `${id}@example.com`, Date.now(), Date.now());
     sql
       .prepare(
-        "INSERT INTO event VALUES ('event','Event','Venue','',6.45,3.39,?,?,'active',1000000,?,'event')",
+        "INSERT INTO event (id,title,venue,description,latitude,longitude,starts_at,ends_at,status,budget,created_at,slug) VALUES ('event','Event','Venue','',6.45,3.39,?,?,'active',1000000,?,'event')",
       )
       .run(Date.now() - 10000, Date.now() + 100000, Date.now());
     sql
@@ -244,5 +208,70 @@ describe("claim reservations", () => {
     expect(sql.prepare("SELECT remaining FROM spot").get()).toEqual({
       remaining: 1,
     });
+  });
+
+  it("allows distinct drops when the campaign permits it, but prevents repeat drops", async () => {
+    sql.exec("UPDATE event SET single_claim = 0");
+    sql
+      .prepare(
+        "INSERT INTO spot VALUES (?,'event','Other',6.45,3.39,50,1000000,1,1)",
+      )
+      .run("22222222-2222-4222-8222-222222222222");
+    const first = await reserveClaim(env, "a", spotId, location());
+    const second = await reserveClaim(
+      env,
+      "a",
+      "22222222-2222-4222-8222-222222222222",
+      location(),
+    );
+    expect(first.id).not.toBe(second.id);
+    expect((await reserveClaim(env, "a", spotId, location())).id).toBe(
+      first.id,
+    );
+  });
+  it("checks prize eligibility against the verified account email", async () => {
+    sql.exec("UPDATE event SET kind = 'prize',single_claim = 0");
+    sql
+      .prepare("INSERT INTO drop_proof (spot_id,recipient_email) VALUES (?,?)")
+      .run(spotId, "a@example.com");
+    await expect(reserveClaim(env, "b", spotId)).rejects.toMatchObject({
+      code: "PRIZE_NOT_ASSIGNED",
+    });
+    expect((await reserveClaim(env, "a", spotId)).status).toBe("reserved");
+  });
+  it("validates normalized puzzle answers without requiring GPS", async () => {
+    sql.exec("UPDATE event SET kind = 'puzzle'");
+    sql
+      .prepare(
+        "INSERT INTO drop_proof (spot_id,proof_hash,secret,clue) VALUES (?,?,?,?)",
+      )
+      .run(
+        spotId,
+        await proofHash(env, "Blue Moon"),
+        await encryptProof(env, "Blue Moon", spotId),
+        "A clue",
+      );
+    await expect(
+      reserveClaim(env, "b", spotId, undefined, "wrong"),
+    ).rejects.toMatchObject({ code: "INVALID_PROOF" });
+    expect(
+      (await reserveClaim(env, "a", spotId, undefined, "  BLUE   moon "))
+        .status,
+    ).toBe("reserved");
+  });
+  it("enforces the campaign policy in the database even for a competing direct insertion", async () => {
+    await reserveClaim(env, "a", spotId, location());
+    sql
+      .prepare(
+        "INSERT INTO spot VALUES (?,'event','Other',6.45,3.39,50,1000000,1,1)",
+      )
+      .run("22222222-2222-4222-8222-222222222222");
+    expect(() =>
+      sql
+        .prepare(
+          "INSERT INTO claim SELECT 'other',user_id,event_id,'22222222-2222-4222-8222-222222222222',account_hash,recipient,amount,'other-key',NULL,NULL,'reserved',NULL,created_at,updated_at FROM claim LIMIT 1",
+        )
+        .run(),
+    ).toThrow("CAMPAIGN_ALREADY_CLAIMED");
   });
 });

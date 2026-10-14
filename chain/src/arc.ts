@@ -1,23 +1,19 @@
-import { defineChain } from "viem";
-export const arcTestnet = defineChain({
-  id: 5042002,
-  name: "Arc Testnet",
-  nativeCurrency: { name: "USDC", symbol: "USDC", decimals: 18 },
-  rpcUrls: { default: { http: ["https://rpc.testnet.arc.io"] } },
-  blockExplorers: {
-    default: { name: "Arc Explorer", url: "https://explorer.testnet.arc.io" },
-  },
-  testnet: true,
-});
+import { arc } from "viem/chains";
+export { arc };
 export const USDC_ADDRESS =
   "0x3600000000000000000000000000000000000000" as const;
 export const USDC_DECIMALS = 6;
 export const explorerTransaction = (hash: string) =>
-  `${arcTestnet.blockExplorers.default.url}/tx/${hash}`;
+  `${arc.blockExplorers.default.url}/tx/${hash}`;
 export function formatUSDC(amount: string | number | bigint) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(Number(amount) / 1e6);
+  const units =
+    typeof amount === "number" ? BigInt(Math.trunc(amount)) : BigInt(amount);
+  const absolute = units < 0n ? -units : units;
+  const whole = (absolute / 1_000_000n).toLocaleString("en-US");
+  const fraction = (absolute % 1_000_000n)
+    .toString()
+    .padStart(6, "0")
+    .replace(/0+$/, "")
+    .padEnd(2, "0");
+  return `${units < 0n ? "-" : ""}$${whole}.${fraction}`;
 }
