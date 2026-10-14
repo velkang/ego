@@ -61,7 +61,7 @@ export function WalletDrawer({
       <div className="wallet-drawer-handle" aria-hidden="true" />
       <header className="wallet-drawer-header">
         <h2 id="wallet-drawer-title">
-          {action === "send" ? "Send USDC" : "Receive USDC"}
+          {action === "send" ? "Send" : "Receive USDC"}
         </h2>
         <button
           className="icon-button"
@@ -77,6 +77,7 @@ export function WalletDrawer({
           <WalletActions
             key={`${action}:${accountId}`}
             action={action}
+            accountId={accountId}
             signedIn={signedIn}
             requestSignIn={requestSignIn}
             onConfirmed={onConfirmed}

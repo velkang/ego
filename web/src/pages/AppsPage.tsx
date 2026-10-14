@@ -1,4 +1,13 @@
-import { Gift, Map, Puzzle, QrCode, Ticket } from "lucide-react";
+import { useFinanceCapabilities } from "../lib/finance";
+import {
+  ArrowLeftRight,
+  TrendingUp,
+  Gift,
+  Map,
+  Puzzle,
+  QrCode,
+  Ticket,
+} from "lucide-react";
 import { Link } from "../components/Link";
 const apps = [
   {
@@ -39,7 +48,41 @@ const apps = [
     tone: "orange",
   },
 ];
-export function AppsPage() {
+export function AppsPage({
+  signedIn,
+  accountId,
+}: {
+  signedIn: boolean;
+  accountId: string;
+}) {
+  const capabilities = useFinanceCapabilities(signedIn, accountId);
+  const visibleApps = [
+    ...apps,
+    ...(capabilities.swap
+      ? [
+          {
+            href: "/swap",
+            icon: ArrowLeftRight,
+            title: "Swap",
+            sub: "Exchange wallet assets",
+            tone: "blue",
+            big: false,
+          },
+        ]
+      : []),
+    ...(capabilities.earnDiscovery
+      ? [
+          {
+            href: "/earn",
+            icon: TrendingUp,
+            title: "Earn",
+            sub: "Explore USDC lending",
+            tone: "green",
+            big: false,
+          },
+        ]
+      : []),
+  ];
   return (
     <main className="page apps-page">
       <header className="page-heading">
@@ -47,7 +90,7 @@ export function AppsPage() {
         <p>Fun ways to get paid.</p>
       </header>
       <div className="app-grid">
-        {apps.map(({ href, icon: Icon, title, sub, tone, big }) => (
+        {visibleApps.map(({ href, icon: Icon, title, sub, tone, big }) => (
           <Link
             key={href}
             href={href}

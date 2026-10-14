@@ -1,3 +1,4 @@
+import type { AssetBalance } from "@ego/chain";
 import { api } from "./api";
 import type { Claim } from "./types";
 
@@ -5,17 +6,20 @@ export type WalletSnapshot = {
   wallet: { address: string } | null;
   balance: string | null;
   balanceUnits?: string | null;
+  assets?: AssetBalance[];
   balanceError?: "BALANCE_UNAVAILABLE" | null;
   claims: Claim[];
 };
 
 // Memory only: never persist authenticated wallet data.
-let cached: {
-  accountId: string;
-  value?: WalletSnapshot;
-  updatedAt?: number;
-  pending?: Promise<WalletSnapshot>;
-} | undefined;
+let cached:
+  | {
+      accountId: string;
+      value?: WalletSnapshot;
+      updatedAt?: number;
+      pending?: Promise<WalletSnapshot>;
+    }
+  | undefined;
 
 export function invalidateWallet() {
   cached = undefined;
@@ -32,6 +36,17 @@ export function readWallet(
     return Promise.resolve(entry.value);
   entry.pending = api<WalletSnapshot>("/wallet")
     .then((value) => {
+      if (value.assets && entry.value?.assets)
+        value = {
+          ...value,
+          assets: value.assets.map((asset) =>
+            asset.units === null
+              ? entry.value!.assets!.find(
+                  (saved) => saved.symbol === asset.symbol,
+                ) || asset
+              : asset,
+          ),
+        };
       if (value.wallet && value.balance !== null) {
         entry.value = value;
         entry.updatedAt = Date.now();

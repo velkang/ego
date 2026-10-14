@@ -76,13 +76,15 @@ beforeAll(async () => {
     "0004_campaigns.sql",
     "0005_funding_quote_binding.sql",
     "0006_creator_gas.sql",
+    "0007_finance.sql",
   ]) {
     const sql = readFileSync(
       new URL(`../migrations/${name}`, import.meta.url),
       "utf8",
     );
     // Use the migration runner's parser rather than a separate trigger regex.
-    for (const statement of splitSqlQuery(sql)) await db.prepare(statement).run();
+    for (const statement of splitSqlQuery(sql))
+      await db.prepare(statement).run();
   }
   env = {
     DB: db,
@@ -238,26 +240,40 @@ it("keeps a provisioned wallet and history available when balance RPC is limited
   const address = "0x2222222222222222222222222222222222222222";
   await env.DB.prepare(
     "INSERT INTO wallet (user_id,idempotency_key,wallet_id,address,created_at) VALUES (?,?,?,?,?)",
-  ).bind(me.user.id, crypto.randomUUID(), "wallet", address, Date.now()).run();
+  )
+    .bind(me.user.id, crypto.randomUUID(), "wallet", address, Date.now())
+    .run();
   const before = await request("/v1/wallet");
   const history = (await before.json()).claims;
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  balanceRpc.mockRejectedValueOnce(Object.assign(new Error("RPC limited"), { code: -32005 }));
+  balanceRpc.mockRejectedValueOnce(
+    Object.assign(new Error("RPC limited"), { code: -32005 }),
+  );
   const limited = await request("/v1/wallet");
   expect(limited.status).toBe(200);
-  expect(await limited.json()).toEqual({
-    wallet: { address }, balance: null, balanceUnits: null,
-    balanceError: "BALANCE_UNAVAILABLE", claims: history,
+  expect(await limited.json()).toMatchObject({
+    wallet: { address },
+    balance: null,
+    balanceUnits: null,
+    balanceError: "BALANCE_UNAVAILABLE",
+    claims: history,
   });
   expect(warn).toHaveBeenCalledWith(expect.stringContaining('"code":-32005'));
   const recovered = await request("/v1/wallet");
   expect(recovered.status).toBe(200);
   expect(await recovered.json()).toMatchObject({
-    wallet: { address }, balance: "100", balanceUnits: "100000000", balanceError: null,
+    wallet: { address },
+    balance: "100",
+    balanceUnits: "100000000",
+    balanceError: null,
   });
   balanceRpc.mockResolvedValueOnce(0n);
   const empty = await (await request("/v1/wallet")).json();
-  expect(empty).toMatchObject({ balance: "0", balanceUnits: "0", balanceError: null });
+  expect(empty).toMatchObject({
+    balance: "0",
+    balanceUnits: "0",
+    balanceError: null,
+  });
   expect(balanceRpc.mock.calls.length).toBeGreaterThan(0);
   warn.mockRestore();
 });

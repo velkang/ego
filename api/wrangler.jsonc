@@ -5,6 +5,10 @@
   "compatibility_date": "2026-10-12",
   "compatibility_flags": ["nodejs_compat"],
   "keep_vars": true,
+  // The SDK has a browser guard; this Worker uses its server implementation.
+  "alias": {
+    "@circle-fin/adapter-circle-wallets": "./node_modules/@circle-fin/adapter-circle-wallets/index.mjs",
+  },
   "d1_databases": [
     {
       "binding": "DB",

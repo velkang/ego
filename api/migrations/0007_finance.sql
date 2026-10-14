@@ -1,0 +1,5 @@
+-- Existing wallet, spend, campaign, and history records remain unchanged.
+CREATE TABLE finance_quote (id TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES user(id), request TEXT NOT NULL, review TEXT NOT NULL, fee TEXT NOT NULL, expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL);
+CREATE TABLE finance_operation (id TEXT PRIMARY KEY REFERENCES finance_quote(id), user_id TEXT NOT NULL REFERENCES user(id), status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed','needs-review')), recovery TEXT, received TEXT, destination_hash TEXT, error TEXT, lease_until INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+CREATE INDEX finance_pending ON finance_operation(status,updated_at);
+CREATE TABLE finance_step (id TEXT PRIMARY KEY, operation_id TEXT NOT NULL REFERENCES finance_operation(id), phase TEXT NOT NULL, call TEXT NOT NULL, fee TEXT NOT NULL, idempotency_key TEXT NOT NULL UNIQUE, transaction_id TEXT UNIQUE, attempts INTEGER NOT NULL DEFAULT 0, hash TEXT, status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed')), created_at INTEGER NOT NULL, UNIQUE(operation_id,phase));

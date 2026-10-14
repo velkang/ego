@@ -1,7 +1,16 @@
 const messages: Record<string, string> = {
+  FINANCE_UNAVAILABLE:
+    "This feature is currently unavailable. Please try again later.",
+  UNSUPPORTED_ROUTE: "This asset cannot be sent on the selected network.",
+  UNSUPPORTED_TRANSACTION:
+    "This transaction could not be safely prepared. Review again.",
+  FEE_CAP_EXCEEDED: "Network fees exceed the reviewed limit. Get a new quote.",
+  INSUFFICIENT_LIQUIDITY:
+    "The vault does not currently have enough available liquidity for this withdrawal.",
+  FEE_UNAVAILABLE: "Fees could not be calculated. Please try again.",
   REAUTH_REQUIRED: "Verify your email again to authorize this payment.",
   INSUFFICIENT_BALANCE:
-    "Your wallet needs enough USDC for the reward and network fees.",
+    "Your wallet needs enough of the selected asset and USDC for network fees.",
   WALLET_BUSY: "Another payment is still processing. Wait for it to finish.",
   QUOTE_EXPIRED: "This fee quote expired. Review the transfer again.",
   INVALID_PROOF: "This code or answer is incorrect, expired, or unavailable.",

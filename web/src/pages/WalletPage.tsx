@@ -1,3 +1,4 @@
+import { assetAmount } from "@ego/chain";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowDownLeft,
@@ -110,7 +111,7 @@ export function WalletPage({
       <section className="balance" aria-label="Your wallet">
         <div className="balance-text">
           <span className="balance-label">
-            Total balance
+            USDC balance
             <button
               onClick={() => setHidden((v) => !v)}
               aria-label={hidden ? "Show balance" : "Hide balance"}
@@ -225,6 +226,28 @@ export function WalletPage({
               )}
             </span>
           </div>
+          {data?.assets
+            ?.filter((a) => a.symbol !== "USDC")
+            .map((a) => (
+              <div className="list-row coin-row" key={a.symbol}>
+                <span className="token-initial" aria-hidden="true">
+                  {a.symbol === "EURC" ? "E" : "B"}
+                </span>
+                <span className="row-main">
+                  <strong>{a.symbol}</strong>
+                  <span>
+                    {a.symbol === "EURC" ? "Euro · Circle" : "Bitcoin · Circle"}
+                  </span>
+                </span>
+                <span className="row-end coin-value">
+                  {hidden
+                    ? "••••"
+                    : a.units === null
+                      ? "—"
+                      : assetAmount(a.units, a.decimals)}
+                </span>
+              </div>
+            ))}
         </div>
       </section>
       <section className="section">

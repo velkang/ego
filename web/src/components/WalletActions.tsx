@@ -1,3 +1,5 @@
+import { FinanceForm } from "./FinanceForm";
+import { useFinanceCapabilities } from "../lib/finance";
 import { useEffect, useState } from "react";
 import { Copy, ExternalLink } from "lucide-react";
 import { explorerTransaction, formatUSDC } from "@ego/chain";
@@ -18,12 +20,15 @@ export function WalletActions({
   signedIn,
   requestSignIn,
   onConfirmed,
+  accountId,
 }: {
   action: "send" | "receive";
+  accountId: string;
   signedIn: boolean;
   requestSignIn: () => void;
   onConfirmed?: () => void;
 }) {
+  const capabilities = useFinanceCapabilities(signedIn, accountId);
   const [address, setAddress] = useState(""),
     [recipient, setRecipient] = useState(""),
     [amount, setAmount] = useState(""),
@@ -136,6 +141,7 @@ export function WalletActions({
         <section className="receive-panel">
           {address ? (
             <>
+              <p>Send USDC on Arc to this address.</p>
               <QR value={address} label="Your receiving wallet address" />
               <p className="receive-address">{address}</p>
               <button
@@ -159,6 +165,16 @@ export function WalletActions({
             <Spinner label="Opening your wallet" />
           )}
         </section>
+      ) : capabilities.loading ? (
+        <Spinner label="Opening send" />
+      ) : capabilities.withdraw || capabilities.swap ? (
+        <FinanceForm
+          kind="withdraw"
+          accountId={accountId}
+          capabilities={capabilities}
+          requestSignIn={requestSignIn}
+          onConfirmed={onConfirmed}
+        />
       ) : transaction ? (
         <section className="send-success">
           <h2>

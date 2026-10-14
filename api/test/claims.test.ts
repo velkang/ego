@@ -38,6 +38,7 @@ describe("claim reservations", () => {
       "0004_campaigns.sql",
       "0005_funding_quote_binding.sql",
     "0006_creator_gas.sql",
+    "0007_finance.sql",
     ])
       sql.exec(
         readFileSync(new URL(`../migrations/${name}`, import.meta.url), "utf8"),

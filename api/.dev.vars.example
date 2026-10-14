@@ -12,3 +12,12 @@ CIRCLE_WALLET_SET_ID=
 CIRCLE_OPERATOR_WALLET_ID=
 EGO_DROPS_ADDRESS=
 CIRCLE_WEBHOOK_SUBSCRIPTION_ID=
+
+# Enable only after mainnet capability and recovery checks; comma-separated: swap,withdraw,earn
+FINANCE_FEATURES=
+# Individually verified Arc pairs, for example USDC:EURC,EURC:USDC.
+FINANCE_SWAP_PAIRS=
+# Verified forwarder routes, for example Base:USDC; no route is enabled by default.
+FINANCE_BRIDGE_ROUTES=
+# One reviewed Arc mainnet USDC vault. Never select a vault by APY alone.
+EARN_VAULT_ADDRESS=

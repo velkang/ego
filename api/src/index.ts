@@ -1,3 +1,9 @@
+import {
+  registerFinanceRoutes,
+  reconcileFinances,
+  reconcileFinance,
+} from "./finance";
+import { extraBalances } from "./finance-provider";
 import { Hono } from "hono";
 import { bodyLimit } from "hono/body-limit";
 import { formatUnits, type Address } from "viem";
@@ -105,6 +111,13 @@ export function createApp() {
     if (claim) await reconcileClaim(c.env, claim);
     await reconcileOperations(c.env);
     await reconcileSpends(c.env);
+    const finance = await c.env.DB.prepare(
+      "SELECT operation_id FROM finance_step WHERE transaction_id = ?",
+    )
+      .bind(message.notification.id)
+      .first<{ operation_id: string }>();
+    if (finance)
+      c.executionCtx.waitUntil(reconcileFinance(c.env, finance.operation_id));
     await c.env.DB.prepare(
       "INSERT INTO webhook (id,received_at) VALUES (?,?) ON CONFLICT(id) DO NOTHING",
     )
@@ -181,6 +194,7 @@ export function createApp() {
       balance,
       balanceUnits,
       balanceError,
+      assets: await extraBalances(c.env, wallet.address!, balanceUnits),
       claims,
     });
   });
@@ -241,6 +255,7 @@ export function createApp() {
   });
   registerCampaignRoutes(app);
   registerSpendRoutes(app);
+  registerFinanceRoutes(app);
   registerAdminRoutes(app);
   app.notFound((c) => c.json({ error: "NOT_FOUND" }, 404));
   return app;
@@ -258,6 +273,7 @@ export default {
         reconcileClaims(env),
         reconcileOperations(env),
         reconcileSpends(env),
+        reconcileFinances(env),
       ]).then(() => undefined),
     );
   },

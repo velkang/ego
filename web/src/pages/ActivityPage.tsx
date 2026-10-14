@@ -1,3 +1,8 @@
+import {
+  assetAmount,
+  assetDefinition,
+  type FinanceOperation,
+} from "@ego/chain";
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Gift, ExternalLink } from "lucide-react";
 import { explorerTransaction, formatUSDC } from "@ego/chain";
@@ -26,6 +31,7 @@ export function activityItems(claims: Claim[], transactions: Transfer[]) {
       hash: c.transactionHash,
       date: c.createdAt,
       incoming: true,
+      finance: null as FinanceOperation | null,
     })),
     ...transactions.map((t) => ({
       id: `send:${t.id}`,
@@ -36,6 +42,7 @@ export function activityItems(claims: Claim[], transactions: Transfer[]) {
       hash: t.transactionHash,
       date: t.createdAt,
       incoming: false,
+      finance: null as FinanceOperation | null,
     })),
   ].sort((a, b) => b.date - a.date);
 }
@@ -53,6 +60,67 @@ export function ActivityPage({
     ),
     [error, setError] = useState(""),
     [revision, setRevision] = useState(0);
+  const [statusStopped, setStatusStopped] = useState(false),
+    [statusRevision, setStatusRevision] = useState(0);
+  const pendingIds =
+    items
+      ?.filter((item) => item.finance?.status === "pending")
+      .map((item) => item.finance!.id)
+      .join(",") || "";
+  useEffect(() => {
+    if (!pendingIds) return;
+    let active = true,
+      running = false,
+      failures = 0,
+      timer: ReturnType<typeof setTimeout>;
+    const started = Date.now();
+    setStatusStopped(false);
+    const schedule = () => {
+      timer = setTimeout(poll, Math.min(60_000, 5000 * 2 ** failures));
+    };
+    const poll = async () => {
+      if (!active) return;
+      if (Date.now() - started > 10 * 60_000) {
+        setStatusStopped(true);
+        return;
+      }
+      if (running || document.hidden || !navigator.onLine) {
+        schedule();
+        return;
+      }
+      running = true;
+      try {
+        const updates = await Promise.all(
+          pendingIds
+            .split(",")
+            .map((id) =>
+              api<{ operation: FinanceOperation }>(`/finance/operations/${id}`),
+            ),
+        );
+        if (active)
+          setItems(
+            (old) =>
+              old?.map((item) => {
+                const op = updates.find(
+                  (u) => u.operation.id === item.finance?.id,
+                )?.operation;
+                return op ? { ...item, status: op.status, finance: op } : item;
+              }) || null,
+          );
+        failures = 0;
+      } catch {
+        failures = Math.min(4, failures + 1);
+      } finally {
+        running = false;
+        if (active) schedule();
+      }
+    };
+    schedule();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [pendingIds, accountId, statusRevision]);
   useEffect(() => {
     if (!signedIn) return;
     let alive = true;
@@ -61,9 +129,37 @@ export function ActivityPage({
     void Promise.all([
       readWallet(accountId),
       api<{ transactions: Transfer[] }>("/wallet/transactions"),
+      api<{ operations: FinanceOperation[] }>("/finance/operations"),
     ])
-      .then(([wallet, history]) => {
-        if (alive) setItems(activityItems(wallet.claims, history.transactions));
+      .then(([wallet, history, finance]) => {
+        if (alive)
+          setItems(
+            [
+              ...activityItems(wallet.claims, history.transactions),
+              ...finance.operations.map((op) => ({
+                id: `finance:${op.id}`,
+                title:
+                  op.kind === "swap"
+                    ? "Swap"
+                    : op.kind === "earn-deposit"
+                      ? "Earn deposit"
+                      : op.kind === "earn-withdraw"
+                        ? "Earn withdrawal"
+                        : `Sent ${op.asset}`,
+                detail: op.destination
+                  ? `To ${op.destination}`
+                  : op.kind === "swap"
+                    ? `${op.asset} to ${op.outputAsset}`
+                    : "USDC lending",
+                amount: 0,
+                status: op.status,
+                hash: null,
+                date: op.createdAt,
+                incoming: op.kind === "earn-withdraw",
+                finance: op,
+              })),
+            ].sort((a, b) => b.date - a.date),
+          );
       })
       .catch((e) => {
         if (alive) setError(e.message);
@@ -122,7 +218,9 @@ export function ActivityPage({
                           ? "Confirmed"
                           : item.status === "failed"
                             ? "Failed"
-                            : "Pending"}{" "}
+                            : item.status === "needs-review"
+                              ? "Review required"
+                              : "Pending"}{" "}
                         · {new Date(item.date).toLocaleDateString()}
                       </span>
                     </span>
@@ -134,8 +232,22 @@ export function ActivityPage({
                           ? "+"
                           : "−"
                         : ""}
-                      {formatUSDC(item.amount)}
-                      <small>USDC</small>
+                      {item.finance
+                        ? `${assetAmount(item.finance.amount, assetDefinition(item.finance.asset).decimals)} ${item.finance.asset}`
+                        : formatUSDC(item.amount)}
+                      <small>{item.finance ? "" : "USDC"}</small>
+                      {item.finance?.transactions.map((tx) => (
+                        <a
+                          key={`${tx.phase}:${tx.hash}`}
+                          className="text-button"
+                          href={tx.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`${tx.phase} transaction`}
+                        >
+                          <ExternalLink size={16} />
+                        </a>
+                      ))}
                       {item.hash && (
                         <a
                           href={explorerTransaction(item.hash)}
@@ -160,6 +272,14 @@ export function ActivityPage({
               )
             )}
           </section>
+          {statusStopped && pendingIds && (
+            <button
+              className="button secondary"
+              onClick={() => setStatusRevision((n) => n + 1)}
+            >
+              Check pending transfers
+            </button>
+          )}
           <CampaignPage
             path="/activity"
             signedIn={signedIn}

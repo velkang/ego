@@ -12,6 +12,9 @@ import { CreateSheet } from "./components/CreateSheet";
 import { Onboarding } from "./components/Onboarding";
 import { AccountMenu } from "./components/AccountMenu";
 import { PageBoundary } from "./components/PageBoundary";
+const FinancePage = lazy(() =>
+  import("./pages/FinancePage").then((m) => ({ default: m.FinancePage })),
+);
 const AppsPage = lazy(() =>
   import("./pages/AppsPage").then((m) => ({ default: m.AppsPage })),
 );
@@ -164,7 +167,17 @@ export function App() {
                     {...authProps}
                   />
                 ) : path === "/apps" ? (
-                  <AppsPage />
+                  <AppsPage
+                    signedIn={!!session}
+                    accountId={session?.user.id ?? "guest"}
+                  />
+                ) : ["/swap", "/earn"].includes(path) ? (
+                  <FinancePage
+                    key={`${path}:${session?.user.id ?? "guest"}`}
+                    path={path}
+                    accountId={session?.user.id ?? "guest"}
+                    {...authProps}
+                  />
                 ) : path === "/activity" ? (
                   <ActivityPage
                     key={session?.user.id ?? "guest"}
@@ -227,7 +240,7 @@ export function App() {
                 href === "/"
                   ? path === "/" || path.startsWith("/wallet")
                   : href === "/apps"
-                    ? path === "/apps" ||
+                    ? ["/apps", "/swap", "/earn"].includes(path) ||
                       mapView ||
                       path === "/prizes" ||
                       path.startsWith("/enter/")
