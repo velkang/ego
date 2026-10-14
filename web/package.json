@@ -1,5 +1,5 @@
 {
-  "name": "@jovva/web",
+  "name": "@ego/web",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -13,7 +13,7 @@
   "dependencies": {
     "@fontsource/dm-sans": "^5.3.0",
     "@fontsource/manrope": "^5.3.0",
-    "@jovva/chain": "workspace:*",
+    "@ego/chain": "workspace:*",
     "@react-three/fiber": "^9.8.1",
     "better-auth": "1.7.7",
     "jsqr": "^1.4.0",

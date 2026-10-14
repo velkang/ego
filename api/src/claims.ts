@@ -2,7 +2,7 @@ import {
   chainIdentifier,
   locationError,
   type LocationEvidence,
-} from "@jovva/chain";
+} from "@ego/chain";
 import { proofHash } from "./proofs";
 import type { Hex } from "viem";
 import type { Bindings } from "./env";

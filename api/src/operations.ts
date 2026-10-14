@@ -1,4 +1,4 @@
-import { chainIdentifier, USDC_ADDRESS } from "@jovva/chain";
+import { chainIdentifier, USDC_ADDRESS } from "@ego/chain";
 import { circle, contractTransaction, escrowAddress, rpc } from "./circle";
 import type { Bindings } from "./env";
 import type { EventRow, OperationRow } from "./db";

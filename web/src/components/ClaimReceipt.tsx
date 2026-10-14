@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { Check, Clock, ExternalLink, Zap } from "lucide-react";
-import { explorerTransaction, formatUSDC } from "@jovva/chain";
+import { explorerTransaction, formatUSDC } from "@ego/chain";
 import { api } from "../lib/api";
 import { invalidateWallet } from "../lib/wallet";
 import type { Claim } from "../lib/types";

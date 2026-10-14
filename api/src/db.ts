@@ -1,4 +1,4 @@
-import type { DropKind } from "@jovva/chain";
+import type { DropKind } from "@ego/chain";
 import { drizzle } from "drizzle-orm/d1";
 import * as schema from "./schema";
 export const database = (binding: D1Database) => drizzle(binding, { schema });

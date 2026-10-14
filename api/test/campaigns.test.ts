@@ -46,11 +46,11 @@ const app = createApp();
 const pending: Promise<unknown>[] = [];
 async function request(path: string, body?: unknown) {
   return (await app.request(
-    `https://jovva.example/v1${path}`,
+    `https://ego.example/v1${path}`,
     {
       method: body === undefined ? "GET" : "POST",
       headers: {
-        Origin: "https://jovva.example",
+        Origin: "https://ego.example",
         Cookie: "session=fake",
         "Content-Type": "application/json",
       },
@@ -112,7 +112,7 @@ beforeEach(() => {
       .run(id, id, `${id}@example.com`, Date.now(), Date.now());
   env = {
     DB: d1(sql),
-    APP_ORIGIN: "https://jovva.example",
+    APP_ORIGIN: "https://ego.example",
     BETTER_AUTH_SECRET: "test",
     PROOF_SECRET: "private-test-secret",
     AUTH_LIMIT: { limit: async () => ({ success: true }) },

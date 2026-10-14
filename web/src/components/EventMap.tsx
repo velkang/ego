@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import type { Coordinates } from "@jovva/chain";
+import type { Coordinates } from "@ego/chain";
 import { Spinner } from "./Spinner";
-import { formatUSDC } from "@jovva/chain";
+import { formatUSDC } from "@ego/chain";
 import { restyleMap } from "../lib/map-style";
 import type { Event, Spot } from "../lib/types";
 

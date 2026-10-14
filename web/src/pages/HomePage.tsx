@@ -4,7 +4,7 @@ import {
   distanceMeters,
   formatUSDC,
   type LocationEvidence,
-} from "@jovva/chain";
+} from "@ego/chain";
 import { api } from "../lib/api";
 import type { Spot } from "../lib/types";
 import { freshLocation, formatDistance } from "../lib/location";

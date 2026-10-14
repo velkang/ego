@@ -11,7 +11,7 @@ import {
   formatUSDC,
   locationError,
   type LocationEvidence,
-} from "@jovva/chain";
+} from "@ego/chain";
 import { api, post } from "../lib/api";
 import { freshLocation, formatDistance, trackLocation } from "../lib/location";
 import { navigate } from "../lib/router";

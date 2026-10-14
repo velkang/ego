@@ -7,7 +7,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { arc, egoDropsAbi, chainIdentifier } from "@jovva/chain";
+import { arc, egoDropsAbi, chainIdentifier } from "@ego/chain";
 import type { Bindings } from "./env";
 import { ApiError, requireConfig } from "./http";
 import type { AbsoluteFee } from "./spends";

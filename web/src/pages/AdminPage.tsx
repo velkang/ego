@@ -1,6 +1,6 @@
 import { Link } from "../components/Link";
 import { useEffect, useState } from "react";
-import { formatUSDC } from "@jovva/chain";
+import { formatUSDC } from "@ego/chain";
 import { api, post } from "../lib/api";
 import type { Event, Operation } from "../lib/types";
 import { Icon } from "../components/Icon";

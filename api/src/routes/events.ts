@@ -1,5 +1,5 @@
 import type { Hono } from "hono";
-import { distanceMeters } from "@jovva/chain";
+import { distanceMeters } from "@ego/chain";
 import type { AppEnvironment } from "../env";
 import type { EventRow, SpotRow, ClaimRow } from "../db";
 import { ApiError } from "../http";

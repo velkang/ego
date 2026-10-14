@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Gift, Ticket, QrCode, Puzzle, Camera, ArrowLeft } from "lucide-react";
-import { formatUSDC } from "@jovva/chain";
+import { formatUSDC } from "@ego/chain";
 import { api, post } from "../lib/api";
 import type { Claim, Event, Spot } from "../lib/types";
 import { Link } from "../components/Link";

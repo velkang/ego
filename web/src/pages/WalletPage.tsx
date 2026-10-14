@@ -9,7 +9,7 @@ import {
   EyeOff,
   Plus,
 } from "lucide-react";
-import { formatUSDC, explorerTransaction } from "@jovva/chain";
+import { formatUSDC, explorerTransaction } from "@ego/chain";
 import { post } from "../lib/api";
 import { readWallet, type WalletSnapshot } from "../lib/wallet";
 import { watchWallet } from "../lib/wallet-refresh";

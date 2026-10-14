@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Copy, ExternalLink } from "lucide-react";
-import { explorerTransaction, formatUSDC } from "@jovva/chain";
+import { explorerTransaction, formatUSDC } from "@ego/chain";
 import { api, post, RequestError } from "../lib/api";
 import { invalidateWallet } from "../lib/wallet";
 import { QR } from "../components/QR";

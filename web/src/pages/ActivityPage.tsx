@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ArrowUpRight, Gift, ExternalLink } from "lucide-react";
-import { explorerTransaction, formatUSDC } from "@jovva/chain";
+import { explorerTransaction, formatUSDC } from "@ego/chain";
 import { api } from "../lib/api";
 import { readWallet } from "../lib/wallet";
 import type { Claim } from "../lib/types";

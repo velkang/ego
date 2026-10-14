@@ -11,8 +11,8 @@ import {
 } from "lucide-react";
 import { LargeCoin } from "../components/Coin";
 import { Spinner } from "../components/Spinner";
-import type { DropKind } from "@jovva/chain";
-import { formatUSDC } from "@jovva/chain";
+import type { DropKind } from "@ego/chain";
+import { formatUSDC } from "@ego/chain";
 import { api, post, RequestError } from "../lib/api";
 import { invalidateWallet } from "../lib/wallet";
 import { decimalUnits } from "../components/WalletActions";

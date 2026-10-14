@@ -1,4 +1,4 @@
-import type { LocationEvidence } from "@jovva/chain";
+import type { LocationEvidence } from "@ego/chain";
 export function locationMessage(error: GeolocationPositionError) {
   return error.code === 1
     ? "Allow location access in your browser settings to find nearby drops."

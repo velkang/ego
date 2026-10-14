@@ -1,5 +1,5 @@
 {
-  "name": "@jovva/api",
+  "name": "@ego/api",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "@circle-fin/developer-controlled-wallets": "10.8.1",
-    "@jovva/chain": "workspace:*",
+    "@ego/chain": "workspace:*",
     "better-auth": "1.7.7",
     "drizzle-orm": "0.45.4",
     "hono": "4.13.13",

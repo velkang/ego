@@ -28,7 +28,7 @@ let mf: Miniflare,
   cookies = "";
 const app = createApp(),
   pending: Promise<unknown>[] = [];
-const origin = "https://jovva.example";
+const origin = "https://ego.example";
 type TestResponse = Omit<Response, "json"> & { json(): Promise<any> };
 async function request(
   path: string,

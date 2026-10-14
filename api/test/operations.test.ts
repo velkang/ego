@@ -2,7 +2,7 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { encodeEventTopics, encodeAbiParameters, parseAbi } from "viem";
-import { chainIdentifier, USDC_ADDRESS } from "@jovva/chain";
+import { chainIdentifier, USDC_ADDRESS } from "@ego/chain";
 import { d1 } from "./d1";
 import type { Bindings } from "../src/env";
 import type { OperationRow } from "../src/db";

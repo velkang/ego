@@ -10,7 +10,7 @@ import {
   type Address,
   type Hex,
 } from "viem";
-import { USDC_ADDRESS } from "@jovva/chain";
+import { USDC_ADDRESS } from "@ego/chain";
 import type { AppEnvironment, Bindings } from "./env";
 import type { EventRow } from "./db";
 import { circle, rpc, contractTransaction, ensureWallet } from "./circle";

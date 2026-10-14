@@ -1,4 +1,4 @@
-import type { DropKind } from "@jovva/chain";
+import type { DropKind } from "@ego/chain";
 export type Event = {
   id: string;
   slug: string;
