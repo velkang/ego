@@ -15,11 +15,13 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { formatUSDC, explorerTransaction } from "@jovva/chain";
-import { api, post } from "../lib/api";
-import type { Claim } from "../lib/types";
+import { post } from "../lib/api";
+import { readWallet, type WalletSnapshot } from "../lib/wallet";
+import { watchWallet } from "../lib/wallet-refresh";
 import { Amount } from "../components/Amount";
 import { Coin, LargeCoin } from "../components/Coin";
 import { Link } from "../components/Link";
+import { Spinner } from "../components/Spinner";
 const ways = [
   {
     href: "/prizes",
@@ -68,29 +70,29 @@ const organisers = [
 ];
 export function WalletPage({
   signedIn,
+  accountId,
   requestSignIn,
+  refreshKey = 0,
 }: {
   signedIn: boolean;
+  accountId: string;
   requestSignIn: () => void;
+  refreshKey?: number;
 }) {
   const generation = useRef(0);
-  const [data, setData] = useState<{
-      wallet: { address: string } | null;
-      balance: string | null;
-      balanceUnits?: string | null;
-      balanceError?: "BALANCE_UNAVAILABLE" | null;
-      claims: Claim[];
-    } | null>(null),
+  const [data, setData] = useState<WalletSnapshot | null>(null),
     [error, setError] = useState(""),
     [hidden, setHidden] = useState(false),
     [busy, setBusy] = useState(false);
-  async function load() {
-    if (!signedIn) return;
+  async function load(refresh = false, quiet = false) {
+    if (!signedIn) return false;
     const current = ++generation.current;
-    setBusy(true);
-    setError("");
+    if (!quiet) {
+      setBusy(true);
+      setError("");
+    }
     try {
-      let result = await api<NonNullable<typeof data>>("/wallet");
+      let result = await readWallet(accountId, refresh);
       if (!result.wallet) {
         const created = await post<{ wallet: { address: string } }>("/wallet");
         // Provisioning has succeeded even if the subsequent balance read fails.
@@ -102,11 +104,20 @@ export function WalletPage({
             balanceUnits: null,
             balanceError: null,
           });
-        result = await api("/wallet");
+        result = await readWallet(accountId);
       }
-      if (current === generation.current) setData(result);
+      if (current === generation.current) {
+        if (result.balanceError && quiet) {
+          setError("Couldn’t update your balance. We’ll retry automatically.");
+        } else {
+          setData(result);
+          setError("");
+        }
+      }
+      return !result.balanceError;
     } catch (e) {
       if (current === generation.current) setError((e as Error).message);
+      return false;
     } finally {
       if (current === generation.current) setBusy(false);
     }
@@ -117,7 +128,10 @@ export function WalletPage({
     return () => {
       generation.current++;
     };
-  }, [signedIn]);
+  }, [signedIn, accountId, refreshKey]);
+  useEffect(() => {
+    if (signedIn) return watchWallet(() => load(false, true));
+  }, [signedIn, accountId]);
   const confirmed = data?.claims.filter((c) => c.status === "confirmed") ?? [];
   return (
     <main className="page wallet-home">
@@ -135,7 +149,7 @@ export function WalletPage({
           <button
             className="text-button"
             disabled={busy}
-            onClick={() => void load()}
+            onClick={() => void load(true)}
           >
             Retry
           </button>
@@ -157,14 +171,16 @@ export function WalletPage({
               base={data.balanceUnits ?? legacyUnits(data.balance)}
               hidden={hidden}
             />
+          ) : busy && signedIn ? (
+            <Spinner label="Loading balance" />
           ) : (
             <strong className="amount">—</strong>
           )}
           {data?.wallet && data.balance === null && (
             <span className="balance-address" role="status">
-              {busy && !data.balanceError
-                ? "Loading balance…"
-                : "Balance unavailable. Try refreshing."}
+              {!busy || data.balanceError
+                ? "Balance unavailable. Try refreshing."
+                : null}
             </span>
           )}
           <span className="balance-address">
@@ -172,7 +188,7 @@ export function WalletPage({
               ? `${data.wallet.address.slice(0, 6)}…${data.wallet.address.slice(-4)}`
               : signedIn
                 ? busy
-                  ? "Opening your wallet…"
+                  ? null
                   : "Wallet is unavailable"
                 : "Sign in to open your wallet"}
           </span>
@@ -235,11 +251,13 @@ export function WalletPage({
           <span>{confirmed.length} found</span>
         </div>
         {signedIn && !data ? (
-          <p role="status">
-            {busy
-              ? "Loading your collection…"
-              : "Your collection couldn’t load. Refresh your wallet to try again."}
-          </p>
+          busy ? (
+            <Spinner label="Loading collection" />
+          ) : (
+            <p role="status">
+              Your collection couldn’t load. Refresh your wallet to try again.
+            </p>
+          )
         ) : confirmed.length ? (
           <div className="collection-scroll">
             {confirmed.map((c) => (
@@ -295,10 +313,16 @@ export function WalletPage({
         <button
           className="text-button"
           disabled={busy}
-          onClick={() => void load()}
+          onClick={() => void load(true)}
         >
-          <RefreshCw size={16} />
-          {busy ? "Refreshing…" : "Refresh wallet"}
+          {busy ? (
+            <Spinner inline label="Refreshing wallet" />
+          ) : (
+            <>
+              <RefreshCw size={16} />
+              Refresh wallet
+            </>
+          )}
         </button>
       )}
     </main>

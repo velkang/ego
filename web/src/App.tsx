@@ -1,10 +1,13 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { Wallet, Map, Gift, Plus } from "lucide-react";
 import { authClient } from "./lib/auth";
 import { api } from "./lib/api";
+import { invalidateWallet } from "./lib/wallet";
 import { navigate, useRoute } from "./lib/router";
 import { AuthDialog } from "./components/AuthDialog";
 import { Link } from "./components/Link";
+import { Spinner } from "./components/Spinner";
+import { WalletDrawer } from "./components/WalletDrawer";
 const HomePage = lazy(() =>
   import("./pages/HomePage").then((m) => ({ default: m.HomePage })),
 );
@@ -23,11 +26,6 @@ const CampaignPage = lazy(() =>
 const EntryPage = lazy(() =>
   import("./pages/EntryPage").then((m) => ({ default: m.EntryPage })),
 );
-const WalletActionPage = lazy(() =>
-  import("./pages/WalletActionPage").then((m) => ({
-    default: m.WalletActionPage,
-  })),
-);
 const tabs = [
   { href: "/", label: "Wallet", icon: Wallet },
   { href: "/explore", label: "Explore", icon: Map },
@@ -37,6 +35,14 @@ const tabs = [
 export function App() {
   const path = useRoute(),
     { data: session } = authClient.useSession();
+  const previousPath = useRef(path);
+  const walletAction =
+    path === "/wallet/send"
+      ? "send"
+      : path === "/wallet/receive"
+        ? "receive"
+        : null;
+  const [walletRefresh, setWalletRefresh] = useState(0);
   const [showAuth, setShowAuth] = useState(false),
     [operator, setOperator] = useState(false),
     [immersive, setImmersive] = useState(false),
@@ -51,8 +57,16 @@ export function App() {
     if (path === "/wallet") navigate("/", true);
     if (path === "/map") navigate("/explore", true);
     setImmersive(false);
-    document.querySelector(".phone-scroll")?.scrollTo(0, 0);
+    const wasDrawer = ["/wallet/send", "/wallet/receive"].includes(
+      previousPath.current,
+    );
+    if (!wasDrawer && !walletAction)
+      document.querySelector(".phone-scroll")?.scrollTo(0, 0);
+    previousPath.current = path;
   }, [path]);
+  useEffect(() => {
+    if (!session) invalidateWallet();
+  }, [session?.user.id]);
   useEffect(() => {
     let alive = true;
     if (session)
@@ -127,15 +141,14 @@ export function App() {
             tabIndex={-1}
             style={mapView || immersive ? { height: "100%" } : undefined}
           >
-            <Suspense
-              fallback={
-                <main className="page" role="status">
-                  Loading…
-                </main>
-              }
-            >
-              {path === "/" || path === "/wallet" ? (
-                <WalletPage key={session?.user.id ?? "guest"} {...authProps} />
+            <Suspense fallback={<Spinner label="Loading page" full />}>
+              {path === "/" || path === "/wallet" || walletAction ? (
+                <WalletPage
+                  key={session?.user.id ?? "guest"}
+                  accountId={session?.user.id ?? "guest"}
+                  refreshKey={walletRefresh}
+                  {...authProps}
+                />
               ) : path === "/explore" || path === "/map" ? (
                 <HomePage />
               ) : eventRef ? (
@@ -157,12 +170,6 @@ export function App() {
                   path={path}
                   {...authProps}
                   onHuntChange={setImmersive}
-                />
-              ) : ["/wallet/send", "/wallet/receive"].includes(path) ? (
-                <WalletActionPage
-                  key={`${path}:${session?.user.id ?? "guest"}`}
-                  action={path.endsWith("send") ? "send" : "receive"}
-                  {...authProps}
                 />
               ) : path === "/admin" && operator ? (
                 <AdminPage />
@@ -208,6 +215,15 @@ export function App() {
               );
             })}
           </nav>
+        )}
+        {walletAction && (
+          <WalletDrawer
+            action={walletAction}
+            accountId={session?.user.id ?? "guest"}
+            {...authProps}
+            onClose={() => navigate("/", true)}
+            onConfirmed={() => setWalletRefresh((value) => value + 1)}
+          />
         )}
         {showAuth && (
           <AuthDialog

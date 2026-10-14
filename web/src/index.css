@@ -13,6 +13,116 @@
   --ease: var(--ease-out);
   font-weight: 400;
 }
+.loading-indicator {
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  color: var(--blue);
+}
+.loading-inline {
+  display: inline-grid;
+  padding: 0;
+  color: inherit;
+}
+.loading-page {
+  min-height: 55dvh;
+}
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  animation: wallet-spin 800ms linear infinite;
+}
+@keyframes wallet-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.wallet-drawer {
+  position: fixed;
+  inset: auto 0 0;
+  width: min(100%, 600px);
+  max-width: 600px;
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top));
+  margin: 0 auto;
+  padding: 0;
+  border: 0;
+  border-radius: 30px 30px 0 0;
+  background: var(--bg-2);
+  color: var(--ink);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.wallet-drawer[open] {
+  display: flex;
+  flex-direction: column;
+  animation: wallet-drawer-in 220ms var(--ease-out);
+}
+.wallet-drawer::backdrop {
+  background: rgba(10, 19, 36, 0.38);
+  backdrop-filter: blur(4px);
+}
+.wallet-drawer-handle {
+  flex-shrink: 0;
+  width: 36px;
+  height: 4px;
+  margin: 12px auto 0;
+  border-radius: 2px;
+  background: var(--line);
+}
+.wallet-drawer-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 22px;
+  flex-shrink: 0;
+}
+.wallet-drawer-header h2 {
+  margin: 0;
+  font-size: 24px;
+}
+.wallet-drawer-header .icon-button {
+  width: 44px;
+  height: 44px;
+}
+.wallet-drawer-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px 22px calc(24px + env(safe-area-inset-bottom));
+}
+.wallet-actions .receive-panel {
+  margin: 0;
+}
+.wallet-actions .receive-address {
+  overflow-wrap: anywhere;
+}
+.wallet-actions .form-stack {
+  margin-top: 0;
+}
+@keyframes wallet-drawer-in {
+  from {
+    transform: translateY(32px);
+    opacity: 0.6;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+@media (min-width: 640px) {
+  .wallet-drawer {
+    bottom: max(24px, calc((100dvh - 880px) / 2));
+    max-height: min(820px, calc(100dvh - 80px));
+    border-radius: 30px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner,
+  .wallet-drawer[open] {
+    animation: none;
+  }
+}
 body {
   max-width: none;
   min-width: 0;

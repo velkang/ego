@@ -10,10 +10,12 @@ import {
   Copy,
 } from "lucide-react";
 import { LargeCoin } from "../components/Coin";
+import { Spinner } from "../components/Spinner";
 import type { DropKind } from "@jovva/chain";
 import { formatUSDC } from "@jovva/chain";
 import { api, post, RequestError } from "../lib/api";
-import { decimalUnits } from "./WalletActionPage";
+import { invalidateWallet } from "../lib/wallet";
+import { decimalUnits } from "../components/WalletActions";
 import { Link } from "../components/Link";
 import { QR } from "../components/QR";
 import { PointPicker } from "../components/PointPicker";
@@ -107,6 +109,13 @@ export function CampaignPage({
   useEffect(() => {
     if (signedIn) void load();
   }, [signedIn]);
+  const confirmedOperations = operations
+    .filter((o) => o.status === "confirmed")
+    .map((o) => o.id)
+    .join(",");
+  useEffect(() => {
+    if (confirmedOperations) invalidateWallet();
+  }, [confirmedOperations]);
   useEffect(() => {
     if (!signedIn || !operations.some((o) => o.status === "pending")) return;
     const timer = setInterval(() => void load(), 4000);
@@ -301,7 +310,11 @@ export function CampaignPage({
                   disabled={busy}
                   onClick={() => void action(created.id, "launch")}
                 >
-                  {busy ? "Submitting…" : "Confirm funding"}
+                  {busy ? (
+                    <Spinner inline label="Submitting funding" />
+                  ) : (
+                    "Confirm funding"
+                  )}
                 </button>
               </>
             )}
@@ -621,7 +634,11 @@ export function CampaignPage({
             <p>You’ll review the network fee before funding.</p>
           </section>
           <button className="button primary" disabled={busy}>
-            {busy ? "Creating…" : "Create campaign"}
+            {busy ? (
+              <Spinner inline label="Creating campaign" />
+            ) : (
+              "Create campaign"
+            )}
           </button>
         </form>
       )}

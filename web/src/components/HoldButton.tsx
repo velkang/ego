@@ -6,6 +6,7 @@ import {
   type ReactNode,
 } from "react";
 import { Coin } from "./Coin";
+import { Spinner } from "./Spinner";
 export function HoldButton({
   disabled = false,
   busy = false,
@@ -121,14 +122,18 @@ export function HoldButton({
           </span>
         </>
       ) : (
-        <span>{busy ? "Claiming…" : children}</span>
+        <span>
+          {busy ? <Spinner inline label="Claiming reward" /> : children}
+        </span>
       )}
     </button>
   );
   return variant === "ring" ? (
     <div className="hold-ring-wrap">
       {button}
-      <span className="hold-ring-label">{busy ? "Claiming…" : children}</span>
+      <span className="hold-ring-label">
+        {busy ? <Spinner inline label="Claiming reward" /> : children}
+      </span>
     </div>
   ) : (
     button

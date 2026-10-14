@@ -10,6 +10,7 @@ import type { Spot } from "../lib/types";
 import { freshLocation, formatDistance } from "../lib/location";
 import { navigate } from "../lib/router";
 import { EventMap } from "../components/EventMap";
+import { Spinner } from "../components/Spinner";
 import { Coin } from "../components/Coin";
 type Drop = Spot & {
   event_slug: string;
@@ -162,13 +163,13 @@ export function HomePage() {
                   : "Start hunt"}
             </button>
           </>
+        ) : loading ? (
+          <Spinner label="Loading drops" />
         ) : (
           <p className="sheet-description">
-            {loading
-              ? "Loading drops…"
-              : drops.length
-                ? "Choose a coin on the map or open the list."
-                : "No drops available to claim right now."}
+            {drops.length
+              ? "Choose a coin on the map or open the list."
+              : "No drops available to claim right now."}
           </p>
         )}
         <div id="drop-list" className="sheet-list" hidden={!expanded}>

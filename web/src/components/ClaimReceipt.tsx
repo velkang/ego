@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { Check, Clock, ExternalLink, Zap } from "lucide-react";
 import { explorerTransaction, formatUSDC } from "@jovva/chain";
 import { api } from "../lib/api";
+import { invalidateWallet } from "../lib/wallet";
 import type { Claim } from "../lib/types";
 import { LargeCoin, Coin } from "./Coin";
 import { Link } from "./Link";
@@ -19,6 +20,9 @@ export function ClaimReceipt({
 }) {
   const [claim, setClaim] = useState(initial),
     [error, setError] = useState("");
+  useEffect(() => {
+    if (claim.status === "confirmed") invalidateWallet();
+  }, [claim.id, claim.status]);
   useEffect(() => {
     if (!["reserved", "submitted"].includes(claim.status)) return;
     let alive = true;

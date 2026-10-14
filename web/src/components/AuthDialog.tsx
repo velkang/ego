@@ -3,6 +3,7 @@ import { authClient } from "../lib/auth";
 import { post } from "../lib/api";
 import { Icon } from "./Icon";
 import { Coin } from "./Coin";
+import { Spinner } from "./Spinner";
 export function AuthDialog({
   onClose,
   onSuccess,
@@ -131,8 +132,14 @@ export function AuthDialog({
           </p>
         )}
         <button className="button primary full" disabled={busy}>
-          {busy ? "One moment…" : sent ? "Sign in" : "Send my code"}
-          <Icon name="arrow" />
+          {busy ? (
+            <Spinner inline label={sent ? "Signing in" : "Sending code"} />
+          ) : (
+            <>
+              {sent ? "Sign in" : "Send my code"}
+              <Icon name="arrow" />
+            </>
+          )}
         </button>
         {sent && (
           <div className="form-secondary">

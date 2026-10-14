@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import type { Coordinates } from "@jovva/chain";
+import { Spinner } from "./Spinner";
 import { formatUSDC } from "@jovva/chain";
 import type { Event, Spot } from "../lib/types";
 
@@ -228,9 +229,9 @@ export function EventMap({
         aria-label={event ? `Reward map for ${event.title}` : "Event map"}
       />
       {loading && !failed && (
-        <p className="map-loading" role="status">
-          Loading map…
-        </p>
+        <div className="map-loading">
+          <Spinner label="Loading map" />
+        </div>
       )}
       {failed && (
         <div className="map-error" role="alert">

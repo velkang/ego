@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink } from "lucide-react";
 import { explorerTransaction, formatUSDC } from "@jovva/chain";
 import { api, post, RequestError } from "../lib/api";
+import { invalidateWallet } from "../lib/wallet";
 import { QR } from "../components/QR";
-import { Link } from "../components/Link";
+import { Spinner } from "./Spinner";
 type Transaction = {
   id: string;
   recipient: string;
@@ -12,14 +13,16 @@ type Transaction = {
   transactionHash: string | null;
   fee: string;
 };
-export function WalletActionPage({
+export function WalletActions({
   action,
   signedIn,
   requestSignIn,
+  onConfirmed,
 }: {
   action: "send" | "receive";
   signedIn: boolean;
   requestSignIn: () => void;
+  onConfirmed?: () => void;
 }) {
   const [address, setAddress] = useState(""),
     [recipient, setRecipient] = useState(""),
@@ -39,26 +42,32 @@ export function WalletActionPage({
   useEffect(() => {
     let alive = true;
     if (signedIn) {
-      void post("/wallet")
-        .then(() => api<{ wallet: { address: string } }>("/wallet"))
+      void post<{ wallet: { address: string } }>("/wallet")
         .then((d) => {
           if (alive) setAddress(d.wallet.address);
         })
         .catch((e) => {
           if (alive) setError(e.message);
         });
-      void api<{ transactions: Transaction[] }>("/wallet/transactions")
-        .then((d) => {
-          if (alive) setHistory(d.transactions);
-        })
-        .catch((e) => {
-          if (alive) setError(e.message);
-        });
+      if (action === "send")
+        void api<{ transactions: Transaction[] }>("/wallet/transactions")
+          .then((d) => {
+            if (alive) setHistory(d.transactions);
+          })
+          .catch((e) => {
+            if (alive) setError(e.message);
+          });
     }
     return () => {
       alive = false;
     };
-  }, [signedIn]);
+  }, [signedIn, action]);
+  useEffect(() => {
+    if (transaction?.status === "confirmed") {
+      invalidateWallet();
+      onConfirmed?.();
+    }
+  }, [transaction?.id, transaction?.status]);
   useEffect(() => {
     if (!transaction || transaction.status !== "pending") return;
     let alive = true;
@@ -113,19 +122,7 @@ export function WalletActionPage({
     }
   }
   return (
-    <main className="page form-page">
-      <Link href="/" className="text-button back-button">
-        <ArrowLeft size={18} />
-        Wallet
-      </Link>
-      <div className="page-heading">
-        <h1>{action === "send" ? "Send money" : "Receive money"}</h1>
-        <p>
-          {action === "send"
-            ? "Send USDC to another wallet."
-            : "Share your address to receive USDC."}
-        </p>
-      </div>
+    <div className="wallet-actions">
       {error && (
         <p className="error" role="alert">
           {error}
@@ -158,8 +155,8 @@ export function WalletActionPage({
                 {copied ? "Copied" : "Copy address"}
               </button>
             </>
-          ) : (
-            <p role="status">Opening your wallet…</p>
+          ) : error ? null : (
+            <Spinner label="Opening your wallet" />
           )}
         </section>
       ) : transaction ? (
@@ -214,7 +211,11 @@ export function WalletActionPage({
             disabled={busy}
             onClick={() => void send()}
           >
-            {busy ? "Submitting…" : "Confirm send"}
+            {busy ? (
+              <Spinner inline label="Submitting transfer" />
+            ) : (
+              "Confirm send"
+            )}
           </button>
           <button
             className="text-button"
@@ -254,7 +255,11 @@ export function WalletActionPage({
             />
           </label>
           <button className="button primary" disabled={busy}>
-            {busy ? "Calculating fee…" : "Review transfer"}
+            {busy ? (
+              <Spinner inline label="Calculating fee" />
+            ) : (
+              "Review transfer"
+            )}
           </button>
         </form>
       )}
@@ -287,7 +292,7 @@ export function WalletActionPage({
           ))}
         </section>
       )}
-    </main>
+    </div>
   );
 }
 export function decimalUnits(value: string) {

@@ -13,6 +13,7 @@ import { EventMap } from "../components/EventMap";
 import { Icon } from "../components/Icon";
 import { Scene } from "../components/Scene";
 import { ClaimReceipt } from "../components/ClaimReceipt";
+import { Spinner } from "../components/Spinner";
 import { HoldButton } from "../components/HoldButton";
 import { Coin, LargeCoin } from "../components/Coin";
 export function EventPage({
@@ -188,9 +189,13 @@ export function EventPage({
           <Icon name="back" />
           All events
         </button>
-        <div className="empty-state" role="status">
-          {error || "Finding this adventure…"}
-        </div>
+        {error ? (
+          <div className="empty-state" role="alert">
+            {error}
+          </div>
+        ) : (
+          <Spinner label="Loading event" full />
+        )}
       </main>
     );
   if (claim && claim.status !== "failed")

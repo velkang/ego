@@ -7,6 +7,7 @@ import { Link } from "../components/Link";
 import { Coin, LargeCoin } from "../components/Coin";
 import { ClaimReceipt } from "../components/ClaimReceipt";
 import { Scanner } from "../components/Scanner";
+import { Spinner } from "../components/Spinner";
 type Prize = Spot & {
   campaign_title: string;
   slug: string;
@@ -365,7 +366,11 @@ export function EntryPage({
               className="button primary"
               disabled={busy || (kind === "puzzle" && !selected)}
             >
-              {busy ? "Claiming…" : "Claim reward"}
+              {busy ? (
+                <Spinner inline label="Claiming reward" />
+              ) : (
+                "Claim reward"
+              )}
             </button>
           </form>
         </>

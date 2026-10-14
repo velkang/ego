@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import QRCode from "qrcode";
+import { Spinner } from "./Spinner";
 export function QR({ value, label }: { value: string; label: string }) {
   const [src, setSrc] = useState(""),
     [error, setError] = useState("");
@@ -23,7 +24,9 @@ export function QR({ value, label }: { value: string; label: string }) {
   }, [value]);
   return src ? (
     <img className="qr-image" src={src} alt={label} />
+  ) : error ? (
+    <p role="alert">{error}</p>
   ) : (
-    <p role="status">{error || "Generating QR code…"}</p>
+    <Spinner label="Generating QR code" />
   );
 }

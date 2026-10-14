@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { decimalUnits } from "../pages/WalletActionPage";
+import { decimalUnits } from "../components/WalletActions";
 it("parses six decimal USDC values without floating point rounding", () => {
   expect(decimalUnits("0.000001")).toBe(1);
   expect(decimalUnits("5.123456")).toBe(5123456);
