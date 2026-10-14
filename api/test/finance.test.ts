@@ -9,6 +9,7 @@ import {
   type Hex,
 } from "viem";
 import {
+  walletAssets,
   assetAmount,
   assetDefinition,
   type FinanceQuote,
@@ -72,7 +73,26 @@ vi.mock("../src/circle", () => ({
   }),
   rpc: () => ({
     getBalance: async () => state.native,
-    readContract: async () => state.token,
+    getChainId: async () => 5042,
+    readContract: async ({
+      functionName,
+      address,
+    }: {
+      functionName: string;
+      address: string;
+    }) => {
+      if (functionName === "decimals")
+        return (
+          walletAssets.find(
+            (a) => a.address.toLowerCase() === address.toLowerCase(),
+          )?.decimals ?? 18
+        );
+      if (functionName === "symbol")
+        return walletAssets.find(
+          (a) => a.address.toLowerCase() === address.toLowerCase(),
+        )?.symbol;
+      return state.token;
+    },
     estimateFeesPerGas: async () => ({
       maxFeePerGas: 1000000000n,
       maxPriorityFeePerGas: 100000000n,
@@ -209,6 +229,7 @@ import { createApp } from "../src/index";
 import { reconcileFinance } from "../src/finance";
 import {
   capabilities,
+  bridge,
   financeJson,
   validRecipient,
 } from "../src/finance-provider";
@@ -216,6 +237,11 @@ let sql: DatabaseSync, env: Bindings;
 let pending: Promise<unknown>[];
 const app = createApp();
 beforeEach(() => {
+  vi.spyOn(bridge().providers[0], "supportsRoute").mockImplementation(
+    (_source, destination, asset, forwarder) =>
+      destination.chain === "Base" && asset === "USDC" && forwarder === true,
+  );
+  vi.spyOn(bridge().providers[1], "supportsRoute").mockResolvedValue(false);
   Object.assign(state, {
     user: "a",
     createdAt: Date.now(),
@@ -266,6 +292,7 @@ beforeEach(() => {
 afterEach(async () => {
   await Promise.allSettled(pending);
   sql.close();
+  vi.restoreAllMocks();
 });
 async function request(path: string, body?: unknown) {
   return app.fetch(
@@ -307,11 +334,11 @@ async function status(id: string) {
     .prepare("SELECT status FROM finance_operation WHERE id = ?")
     .get(id) as { status: string };
 }
-it("keeps new capabilities disabled until rollout configuration exists", async () => {
+it("discovers supported swaps, vaults, and forwarded withdrawals without toggles", async () => {
   expect(await capabilities(env)).toMatchObject({
-    swap: false,
-    earn: false,
-    withdraw: false,
+    swap: true,
+    earn: true,
+    withdraw: true,
   });
   expect(
     (
@@ -322,7 +349,7 @@ it("keeps new capabilities disabled until rollout configuration exists", async (
         amount: "1",
       })
     ).status,
-  ).toBe(503);
+  ).toBe(200);
   expect(state.keys).toHaveLength(0);
 });
 it("validates non-EVM destination addresses without accepting zero or malformed keys", () => {
@@ -360,7 +387,7 @@ it("rejects unsupported destinations and self-sends", async () => {
         recipient,
       })
     ).status,
-  ).toBe(503);
+  ).toBe(409);
   expect(
     (
       await request("/finance/quotes", {
@@ -472,8 +499,6 @@ it("releases a rejected pre-submission operation for a new review", async () => 
 });
 
 it("recovers a burned withdrawal without another source payment and waits for destination delivery", async () => {
-  env.FINANCE_FEATURES = "withdraw";
-  env.FINANCE_BRIDGE_ROUTES = "Base:USDC";
   const response = await request("/finance/quotes", {
     kind: "withdraw",
     asset: "USDC",
@@ -507,7 +532,6 @@ it("rejects insufficient EURC independently of USDC gas funds", async () => {
   expect(state.keys).toHaveLength(0);
 });
 it("rejects slippage outside the reviewed range or fractional basis points", async () => {
-  env.FINANCE_FEATURES = "swap";
   for (const slippageBps of [9, 301, 50.5]) {
     expect(
       (
@@ -573,15 +597,14 @@ it("reports an onchain revert as failed and unlocks without retrying payment", a
   expect(state.transactions.size).toBe(1);
 });
 
-it("keeps unverified swap pairs unavailable even when swapping is configured", async () => {
-  env.FINANCE_FEATURES = "swap";
+it("rejects swaps into the same asset", async () => {
   const input = {
     kind: "swap",
     asset: "USDC",
-    outputAsset: "EURC",
+    outputAsset: "USDC",
     amount: "1",
   };
-  expect((await request("/finance/quotes", input)).status).toBe(409);
+  expect((await request("/finance/quotes", input)).status).toBe(400);
   expect(state.keys).toHaveLength(0);
 });
 
@@ -607,4 +630,27 @@ it("does not broadcast when asynchronous preparation finishes after execution ti
     release?.();
     vi.useRealTimers();
   }
+});
+
+it("requires a vault for Earn quotes and preserves the selected vault on submission", async () => {
+  const input = { kind: "earn-deposit", asset: "USDC", amount: "1000000" };
+  expect((await request("/finance/quotes", input)).status).toBe(400);
+  const vaultAddress = "0x4444444444444444444444444444444444444444";
+  const response = await request("/finance/quotes", { ...input, vaultAddress });
+  expect(response.status).toBe(200);
+  const q = ((await response.json()) as { quote: FinanceQuote }).quote;
+  expect(q.request.vaultAddress).toBe(vaultAddress);
+  env.EARN_VAULT_ADDRESS = owner;
+  const submitted = await request(`/finance/quotes/${q.id}/submit`, {
+    vaultAddress: owner,
+  });
+  expect(submitted.status).toBe(202);
+  const operation = (
+    (await submitted.json()) as { operation: FinanceOperation }
+  ).operation;
+  expect(operation.vaultAddress).toBe(vaultAddress);
+  const saved = sql
+    .prepare("SELECT review FROM finance_quote WHERE id = ?")
+    .get(q.id) as { review: string };
+  expect(JSON.parse(saved.review).vaultAddress).toBe(vaultAddress);
 });

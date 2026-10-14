@@ -48,6 +48,7 @@ export type FinanceRequest = {
   destination?: string;
   recipient?: string;
   slippageBps?: number;
+  vaultAddress?: string;
 };
 export type FinanceFee = {
   symbol: string;
@@ -69,6 +70,7 @@ export type FinanceQuote = {
   assetDecimals: number;
   outputDecimals: number;
   timing: string;
+  vault?: { address: string; name: string; provider: string };
 };
 export type FinanceOperation = {
   id: string;
@@ -79,6 +81,7 @@ export type FinanceOperation = {
   status: "pending" | "confirmed" | "failed" | "needs-review";
   recipient?: string;
   destination?: string;
+  vaultAddress?: string;
   createdAt: number;
   error: string | null;
   received?: { units: string; symbol: string; decimals: number };

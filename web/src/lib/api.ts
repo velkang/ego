@@ -1,7 +1,8 @@
 const messages: Record<string, string> = {
   FINANCE_UNAVAILABLE:
     "This feature is currently unavailable. Please try again later.",
-  UNSUPPORTED_ROUTE: "This asset cannot be sent on the selected network.",
+  UNSUPPORTED_ROUTE: "This asset pair or destination network is not supported.",
+  UNSUPPORTED_VAULT: "This vault is not available for Arc USDC deposits.",
   UNSUPPORTED_TRANSACTION:
     "This transaction could not be safely prepared. Review again.",
   FEE_CAP_EXCEEDED: "Network fees exceed the reviewed limit. Get a new quote.",

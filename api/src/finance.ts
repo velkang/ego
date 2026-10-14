@@ -1,6 +1,12 @@
 import type { Hono } from "hono";
 import { z } from "zod";
-import { decodeEventLog, formatUnits, type Address, type Hex } from "viem";
+import {
+  decodeEventLog,
+  formatUnits,
+  isAddress,
+  type Address,
+  type Hex,
+} from "viem";
 import {
   walletAssets,
   assetAmount,
@@ -16,9 +22,9 @@ import { requireRecentAuth, maximumFee, type AbsoluteFee } from "./spends";
 import { ApiError } from "./http";
 import {
   capabilities,
+  bridge,
   swapPairs,
   destinationChains,
-  enabled,
   earnSummary,
   listEarnVaults,
   executeProvider,
@@ -74,19 +80,19 @@ const requestSchema = z
     outputAsset: z.enum(["USDC", "EURC", "cirBTC"]).optional(),
     destination: z.string().min(1).max(60).optional(),
     recipient: z.string().min(1).max(100).optional(),
+    vaultAddress: z
+      .string()
+      .regex(/^0x[0-9a-fA-F]{40}$/)
+      .optional(),
     slippageBps: z.number().int().min(10).max(300).default(50),
   })
   .strict();
 const approvalSelector = "0x095ea7b3";
 const feeBudgetGas = 2_000_000n;
 class Deferred extends Error {}
-function feature(request: FinanceRequest) {
-  return request.kind.startsWith("earn-") ? "earn" : request.kind;
-}
-export function validateRequest(
+export async function validateRequest(
   request: FinanceRequest,
   wallet: { address: string },
-  env: Bindings,
 ) {
   if (
     request.kind === "swap" &&
@@ -95,12 +101,17 @@ export function validateRequest(
     throw new ApiError("INVALID_REQUEST");
   if (
     request.kind === "swap" &&
-    !swapPairs(env).some(
+    !swapPairs().some(
       (pair) => pair.from === request.asset && pair.to === request.outputAsset,
     )
   )
     throw new ApiError("UNSUPPORTED_ROUTE", 409);
-  if (request.kind.startsWith("earn-") && request.asset !== "USDC")
+  if (
+    request.kind.startsWith("earn-") &&
+    (request.asset !== "USDC" ||
+      !request.vaultAddress ||
+      !isAddress(request.vaultAddress))
+  )
     throw new ApiError("INVALID_REQUEST");
   if (request.kind === "withdraw") {
     if (!["USDC", "EURC"].includes(request.asset))
@@ -108,7 +119,7 @@ export function validateRequest(
     const route =
       request.destination === "Arc"
         ? { type: "evm" }
-        : destinationChains(env).find(
+        : (await destinationChains()).find(
             (c) =>
               c.id === request.destination &&
               c.assets.includes(request.asset as "USDC" | "EURC"),
@@ -172,9 +183,9 @@ async function publicJob(env: Bindings, job: Job): Promise<FinanceOperation> {
       url: `https://explorer.arc.io/tx/${s.hash}`,
     }));
   if (job.destination_hash && request.destination !== "Arc") {
-    const chain = destinationChains(env).find(
-      (c) => c.id === request.destination,
-    )?.definition;
+    const chain = bridge()
+      .getSupportedChains({ isTestnet: false })
+      .find((c) => c.chain === request.destination);
     if (chain)
       transactions.push({
         phase: "Destination",
@@ -191,6 +202,7 @@ async function publicJob(env: Bindings, job: Job): Promise<FinanceOperation> {
     status: job.status,
     recipient: request.recipient,
     destination: request.destination,
+    vaultAddress: request.vaultAddress || review.vaultAddress,
     createdAt: job.created_at,
     error: job.error,
     received: job.received ? JSON.parse(job.received) : undefined,
@@ -506,11 +518,14 @@ export async function reconcileFinance(env: Bindings, id: string) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const result = await Promise.race([
       executeProvider(
-        request.kind.startsWith("earn-")
-          ? { ...env, EARN_VAULT_ADDRESS: review.vaultAddress }
-          : env,
+        env,
         wallet,
-        request,
+        request.kind.startsWith("earn-")
+          ? {
+              ...request,
+              vaultAddress: request.vaultAddress || review.vaultAddress,
+            }
+          : request,
         assetAmount(review.minimumReceived, review.outputDecimals),
         review.providerQuote,
         job.recovery,
@@ -588,10 +603,17 @@ export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
     return c.json(await listEarnVaults(c.env, page));
   });
   app.get("/v1/earn", async (c) => {
-    if (!enabled(c.env, "earn")) throw new ApiError("FINANCE_UNAVAILABLE", 503);
     await verifyAssets(c.env);
     return c.json(
-      await earnSummary(c.env, await ensureWallet(c.env, c.get("user").id)),
+      await earnSummary(
+        c.env,
+        await ensureWallet(c.env, c.get("user").id),
+        z
+          .string()
+          .regex(/^0x[0-9a-fA-F]{40}$/)
+          .optional()
+          .parse(c.req.query("vault")),
+      ),
     );
   });
   app.use("/v1/finance/*", async (c, next) => {
@@ -605,15 +627,9 @@ export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
   });
   app.post("/v1/finance/quotes", async (c) => {
     const request = requestSchema.parse(await c.req.json());
-    // Arc-only direct transfers need no bridge rollout permission.
-    if (
-      !(request.kind === "withdraw" && request.destination === "Arc") &&
-      !enabled(c.env, feature(request))
-    )
-      throw new ApiError("FINANCE_UNAVAILABLE", 503);
     await verifyAssets(c.env);
     const wallet = await ensureWallet(c.env, c.get("user").id);
-    validateRequest(request, wallet, c.env);
+    await validateRequest(request, wallet);
     const estimate = await providerQuote(c.env, wallet, request);
     const prices = await rpc(c.env).estimateFeesPerGas();
     const fee: AbsoluteFee = {
@@ -653,12 +669,13 @@ export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
         return {
           ...f,
           symbol: asset.symbol,
-          decimals: asset.decimals,
-          amount: assetUnits(f.amount, asset.decimals),
+          decimals: f.decimals ?? asset.decimals,
+          amount: assetUnits(f.amount, f.decimals ?? asset.decimals),
         };
       }),
       networkFeeCap: maximumFee(fee).toString(),
       networkFeeDecimals: 18,
+      vault: estimate.vault,
       timing:
         request.kind === "withdraw" && request.destination !== "Arc"
           ? "Depends on source finality and destination delivery; track progress in Activity."
@@ -675,7 +692,7 @@ export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
           ...quote,
           providerQuote: estimate.providerQuote,
           ...(request.kind.startsWith("earn-")
-            ? { vaultAddress: c.env.EARN_VAULT_ADDRESS }
+            ? { vaultAddress: request.vaultAddress }
             : {}),
         }),
         JSON.stringify(fee),
@@ -703,11 +720,6 @@ export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
     if (Date.now() >= quote.expires_at)
       throw new ApiError("QUOTE_EXPIRED", 409);
     const request = JSON.parse(quote.request) as FinanceRequest;
-    if (
-      !(request.kind === "withdraw" && request.destination === "Arc") &&
-      !enabled(c.env, feature(request))
-    )
-      throw new ApiError("FINANCE_UNAVAILABLE", 503);
     await sufficientAssets(
       c.env,
       c.get("user").id,

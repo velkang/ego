@@ -58,18 +58,14 @@ export function AppsPage({
   const capabilities = useFinanceCapabilities(signedIn, accountId);
   const visibleApps = [
     ...apps,
-    ...(capabilities.swap
-      ? [
-          {
-            href: "/swap",
-            icon: ArrowLeftRight,
-            title: "Swap",
-            sub: "Exchange wallet assets",
-            tone: "blue",
-            big: false,
-          },
-        ]
-      : []),
+    {
+      href: "/swap",
+      icon: ArrowLeftRight,
+      title: "Swap",
+      sub: "Exchange wallet assets",
+      tone: "blue",
+      big: false,
+    },
     ...(capabilities.earnDiscovery
       ? [
           {

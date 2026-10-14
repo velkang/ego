@@ -32,7 +32,9 @@ export const tokenAbi = parseAbi([
   "function transfer(address,uint256) returns (bool)",
   "event Transfer(address indexed from,address indexed to,uint256 value)",
 ]);
-export const bridge = () => new BridgeKit({ disableErrorReporting: true });
+let bridgeKit: BridgeKit | undefined;
+export const bridge = () =>
+  (bridgeKit ||= new BridgeKit({ disableErrorReporting: true }));
 export const earn = () =>
   new EarnKit({ disableAnalytics: true, disableErrorReporting: true });
 export const swap = () =>
@@ -40,11 +42,6 @@ export const swap = () =>
 export type PreparedCall = { to: Hex; data: Hex; value: string };
 export type Wallet = { id: string; address: string };
 export type Executor = (call: PreparedCall) => Promise<string>;
-export const enabled = (env: Bindings, feature: string) =>
-  (env.FINANCE_FEATURES || "")
-    .split(",")
-    .map((v) => v.trim())
-    .includes(feature);
 export function financeJson(value: unknown) {
   return JSON.stringify(value, (key, item) => {
     if (
@@ -142,58 +139,72 @@ export async function extraBalances(
   const result: AssetBalance[] = [{ symbol: "USDC", decimals: 6, units: usdc }];
   for (const asset of walletAssets.slice(1)) {
     let units: string | null = null;
-    if (env.FINANCE_FEATURES)
-      try {
-        await verifyAssets(env);
-        units = (
-          await rpc(env).readContract({
-            address: asset.address,
-            abi: tokenAbi,
-            functionName: "balanceOf",
-            args: [address as Address],
-          })
-        ).toString();
-      } catch {
-        /* Preserve an unavailable asset instead of fabricating zero. */
-      }
+    try {
+      await verifyAssets(env);
+      units = (
+        await rpc(env).readContract({
+          address: asset.address,
+          abi: tokenAbi,
+          functionName: "balanceOf",
+          args: [address as Address],
+        })
+      ).toString();
+    } catch {
+      /* Preserve an unavailable asset instead of fabricating zero. */
+    }
     result.push({ symbol: asset.symbol, decimals: asset.decimals, units });
   }
   return result;
 }
-export function destinationChains(env: Bindings) {
-  const approved = (env.FINANCE_BRIDGE_ROUTES || "")
-    .split(",")
-    .map((r) => r.trim());
-  return bridge()
-    .getSupportedChains({ isTestnet: false })
-    .filter(
-      (c) =>
-        c.chain !== "Arc" &&
-        ["evm", "solana"].includes(c.type) &&
-        c.cctp?.forwarderSupported?.destination === true,
-    )
-    .map((c) => ({
-      definition: c,
-      id: c.chain,
-      name: c.name,
-      type: c.type,
-      assets: (["USDC", "EURC"] as const).filter((a) =>
-        approved.includes(`${c.chain}:${a}`),
-      ),
-    }))
-    .filter((c) => c.assets.length);
+export async function destinationChains() {
+  const kit = bridge();
+  const chains = kit.getSupportedChains({ isTestnet: false });
+  const source = chains.find((c) => c.chain === "Arc");
+  if (!source) return [];
+  const destinations = await Promise.all(
+    chains
+      .filter((c) => c.chain !== "Arc" && ["evm", "solana"].includes(c.type))
+      .map(async (c) => {
+        const assets: ("USDC" | "EURC")[] = [];
+        for (const asset of ["USDC", "EURC"] as const) {
+          if (!(asset === "USDC" ? c.usdcAddress : c.eurcAddress)) continue;
+          if (asset === "USDC" && !c.cctp?.forwarderSupported?.destination)
+            continue;
+          try {
+            const supported =
+              asset === "USDC"
+                ? await kit.providers[0].supportsRoute(source, c, asset, true)
+                : await kit.providers[1].supportsRoute(source, c, asset, true);
+            if (supported) assets.push(asset);
+          } catch {
+            /* Do not advertise a route whose support cannot be established. */
+          }
+        }
+        return {
+          definition: c,
+          id: c.chain,
+          name: c.name,
+          type: c.type,
+          assets,
+        };
+      }),
+  );
+  return destinations.filter((c) => c.assets.length);
 }
-export function swapPairs(env: Bindings) {
-  const approved = (env.FINANCE_SWAP_PAIRS || "")
-    .split(",")
-    .map((p) => p.trim());
+export function swapPairs() {
+  const supported = swap()
+    .getSupportedChains()
+    .some(
+      (chain) =>
+        chain.chain === "Arc" &&
+        !chain.isTestnet &&
+        chain.type === "evm" &&
+        chain.chainId === 5042,
+    );
+  if (!supported) return [];
   return walletAssets.flatMap((from) =>
     walletAssets
-      .filter(
-        (to) =>
-          to.symbol !== from.symbol &&
-          approved.includes(`${from.symbol}:${to.symbol}`),
-      )
+      .filter((to) => to.symbol !== from.symbol)
       .map((to) => ({ from: from.symbol, to: to.symbol })),
   );
 }
@@ -209,30 +220,23 @@ export async function capabilities(
     assets: walletAssets,
     destinations: [],
   };
-  if (!env.FINANCE_FEATURES) return empty;
   try {
     await verifyAssets(env);
   } catch {
     return empty;
   }
-  const destinations = destinationChains(env).map(
+  const destinations = (await destinationChains()).map(
     ({ definition: _, ...route }) => route,
   );
-  let earnReady = false;
-  if (enabled(env, "earn") && env.EARN_VAULT_ADDRESS) {
-    try {
-      await vaultInfo(env);
-      earnReady = true;
-    } catch {
-      /* Fail closed. */
-    }
-  }
+  const earnReady = earn()
+    .getSupportedChains()
+    .some((chain) => chain.chain === "Arc" && !chain.isTestnet);
   return {
-    swap: enabled(env, "swap") && swapPairs(env).length > 0,
-    swapPairs: enabled(env, "swap") ? swapPairs(env) : [],
+    swap: swapPairs().length > 0,
+    swapPairs: swapPairs(),
     earn: earnReady,
     earnDiscovery: true,
-    withdraw: enabled(env, "withdraw") && destinations.length > 0,
+    withdraw: destinations.length > 0,
     assets: walletAssets,
     destinations,
   };
@@ -248,41 +252,45 @@ export function validRecipient(address: string, type: string) {
   const bytes = value === 0n ? 0 : Math.ceil(value.toString(2).length / 8);
   return bytes + (address.match(/^1*/)?.[0].length || 0) === 32 && value !== 0n;
 }
-export async function vaultInfo(env: Bindings) {
-  if (!env.EARN_VAULT_ADDRESS || !isAddress(env.EARN_VAULT_ADDRESS))
-    throw new ApiError("FINANCE_UNAVAILABLE", 503);
+export async function vaultInfo(
+  env: Bindings,
+  address = env.EARN_VAULT_ADDRESS,
+) {
+  if (!address || !isAddress(address))
+    throw new ApiError("UNSUPPORTED_VAULT", 409);
   const result = await earn().getVaults({
-    vaults: [{ chain: "Arc", vaultAddress: env.EARN_VAULT_ADDRESS }],
+    vaults: [{ chain: "Arc", vaultAddress: address }],
     config: { apiKey: env.CIRCLE_API_KEY },
   });
   const vault = result.vaults[0];
   if (
     !vault ||
     vault.chain !== "Arc" ||
-    vault.vaultAddress.toLowerCase() !== env.EARN_VAULT_ADDRESS.toLowerCase()
+    vault.vaultAddress.toLowerCase() !== address.toLowerCase()
   )
-    throw new ApiError("FINANCE_UNAVAILABLE", 503);
+    throw new ApiError("UNSUPPORTED_VAULT", 409);
   const asset = vault.asset;
   if (
     vault.assetAddress.toLowerCase() !==
       walletAssets[0].address.toLowerCase() ||
     asset !== "USDC"
   )
-    throw new ApiError("FINANCE_UNAVAILABLE", 503);
+    throw new ApiError("UNSUPPORTED_VAULT", 409);
   const underlying = await rpc(env).readContract({
     address: vault.vaultAddress as Address,
     abi: parseAbi(["function asset() view returns(address)"]),
     functionName: "asset",
   });
   if (underlying.toLowerCase() !== walletAssets[0].address.toLowerCase())
-    throw new ApiError("FINANCE_UNAVAILABLE", 503);
+    throw new ApiError("UNSUPPORTED_VAULT", 409);
   return vault;
 }
 export async function earnSummary(
   env: Bindings,
   wallet: Wallet,
+  address?: string,
 ): Promise<EarnSummary> {
-  const vault = await vaultInfo(env);
+  const vault = await vaultInfo(env, address);
   const position = await earn().getPosition({
     from: {
       adapter: financeAdapter(env),
@@ -333,11 +341,14 @@ export async function providerQuote(
     request.amount,
     assetDefinition(request.asset).decimals,
   );
-  let fees: Omit<FinanceFee, "decimals">[] = [],
+  let fees: (Omit<FinanceFee, "decimals"> & { decimals?: number })[] = [],
     expected = amount,
     minimum = amount,
     output = request.asset;
   let providerQuote: unknown;
+  let vaultReview:
+    | { address: string; name: string; provider: string }
+    | undefined;
   if (request.kind === "swap") {
     output = request.outputAsset!;
     const quote = await swap().estimate({
@@ -358,10 +369,11 @@ export async function providerQuote(
     fees = (quote.fees || []).map((f) => ({
       symbol: f.token,
       amount: f.amount!,
-      label: f.type,
+      label: f.type === "gas" ? "Estimated network fee" : f.type,
+      ...(f.type === "gas" ? { decimals: 18 } : {}),
     }));
   } else if (request.kind === "withdraw" && request.destination !== "Arc") {
-    const route = destinationChains(env).find(
+    const route = (await destinationChains()).find(
       (r) =>
         r.id === request.destination &&
         r.assets.includes(request.asset as "USDC" | "EURC"),
@@ -390,9 +402,8 @@ export async function providerQuote(
       amount: f.amount!,
       label: f.type,
     }));
-    // Only enable routes with fees in the bridged asset; no hidden fee-asset spend.
     if (fees.some((f) => f.symbol !== request.asset))
-      throw new ApiError("FINANCE_UNAVAILABLE", 503);
+      throw new ApiError("FEE_UNAVAILABLE", 503);
     const feeUnits = fees.reduce(
       (sum, f) =>
         sum +
@@ -407,7 +418,12 @@ export async function providerQuote(
     );
     providerQuote = quote.quote;
   } else if (request.kind.startsWith("earn-")) {
-    const vault = await vaultInfo(env);
+    const vault = await vaultInfo(env, request.vaultAddress);
+    vaultReview = {
+      address: vault.vaultAddress,
+      name: vault.name,
+      provider: vault.protocol,
+    };
     const params = {
       from,
       vaultAddress: vault.vaultAddress,
@@ -415,7 +431,16 @@ export async function providerQuote(
       config: { apiKey: env.CIRCLE_API_KEY, batchTransactions: false },
     };
     if (request.kind === "earn-deposit") {
-      const quote = await earn().getDepositQuote(params);
+      const quote = await earn()
+        .getDepositQuote(params)
+        .catch((error: unknown) => {
+          if (
+            (error as { code?: number }).code === 1104 &&
+            /wallet does not hold enough tokens/i.test((error as Error).message)
+          )
+            throw new ApiError("INSUFFICIENT_BALANCE", 409);
+          throw error;
+        });
       fees = quote.fees.map((f) => ({
         symbol: f.symbol,
         amount: f.amount,
@@ -444,7 +469,14 @@ export async function providerQuote(
       );
     }
   }
-  return { fees, expected, minimum, output, providerQuote };
+  return {
+    fees,
+    expected,
+    minimum,
+    output,
+    providerQuote,
+    vault: vaultReview,
+  };
 }
 export async function executeProvider(
   env: Bindings,
@@ -506,12 +538,12 @@ export async function executeProvider(
             ),
           },
         });
-    const mint = result.steps.find(
-      (s) => s.name === "mint" && s.state === "success",
+    const delivery = result.steps.find(
+      (s) => ["mint", "forward"].includes(s.name) && s.state === "success",
     );
     return {
-      complete: result.state === "success" && !!mint?.txHash,
-      hash: mint?.txHash,
+      complete: result.state === "success" && !!delivery?.txHash,
+      hash: delivery?.txHash,
       recovery: financeJson(result),
     };
   }
@@ -532,7 +564,7 @@ export async function executeProvider(
   }
   const params = {
     from,
-    vaultAddress: env.EARN_VAULT_ADDRESS!,
+    vaultAddress: request.vaultAddress!,
     amount,
     config: { apiKey: env.CIRCLE_API_KEY, batchTransactions: false },
   };
@@ -556,14 +588,6 @@ export async function listEarnVaults(
     pageSize: 100,
     config: { apiKey: env.CIRCLE_API_KEY },
   });
-  let approved = "";
-  if (enabled(env, "earn") && env.EARN_VAULT_ADDRESS) {
-    try {
-      approved = (await vaultInfo(env)).vaultAddress.toLowerCase();
-    } catch {
-      /* Discovery remains available. */
-    }
-  }
   return {
     page,
     hasMore: page < result.pagination.totalPages,
@@ -584,7 +608,7 @@ export async function listEarnVaults(
         managementFee: v.fee.management,
         liquidity: assetUnits(v.liquidity, 6),
         decimals: 6,
-        enabled: v.vaultAddress.toLowerCase() === approved,
+        enabled: true,
       })),
   };
 }

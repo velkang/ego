@@ -82,7 +82,12 @@ export function FinanceForm({
         if (generation.current === current)
           setOperation(
             data.operations.find(
-              (op) => op.kind === kind && op.status === "pending",
+              (op) =>
+                op.kind === kind &&
+                op.status === "pending" &&
+                (!kind.startsWith("earn-") ||
+                  op.vaultAddress?.toLowerCase() ===
+                    earn?.vault.address.toLowerCase()),
             ) || null,
           );
       })
@@ -174,6 +179,9 @@ export function FinanceForm({
         kind,
         asset,
         amount: units,
+        ...(kind.startsWith("earn-")
+          ? { vaultAddress: earn?.vault.address }
+          : {}),
         ...(kind === "swap"
           ? {
               outputAsset: output,
@@ -326,6 +334,17 @@ export function FinanceForm({
             Review {title.toLowerCase()}
           </h2>
           <dl className="finance-review">
+            {quote.vault && (
+              <div>
+                <dt>Vault</dt>
+                <dd>
+                  {quote.vault.name}
+                  <small className="finance-address">
+                    {quote.vault.address}
+                  </small>
+                </dd>
+              </div>
+            )}
             <div>
               <dt>Amount</dt>
               <dd>

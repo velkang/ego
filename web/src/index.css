@@ -1380,21 +1380,159 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+/* Earn keeps discovery compact; financial details belong to the selected vault. */
 .earn-vault-list {
   list-style: none;
   padding: 0;
-  margin: 24px 0;
+  margin: 0 0 24px;
 }
 .earn-vault-list > li {
-  padding: 24px 0;
   border-bottom: 1px solid var(--line);
 }
-.earn-vault-list h3 {
-  margin: 0;
+.vault-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.vault-row:hover {
+  background: var(--surface-2);
+}
+.vault-row > img,
+.vault-row > svg {
+  flex-shrink: 0;
+}
+.vault-row > svg {
+  color: var(--ink-3);
+}
+.vault-row-name {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 4px;
+}
+.vault-row-name strong {
+  font-size: 14px;
+  line-height: 1.4;
   overflow-wrap: anywhere;
 }
-.earn-vault-list .text-button {
+.vault-row-name > span {
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.vault-row-apy {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.vault-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  min-height: 48px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  color: var(--ink-2);
+  margin-bottom: 24px;
+}
+.vault-search input {
+  width: 100%;
+  min-width: 0;
+  padding: 12px 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+}
+.vault-search:focus-within {
+  outline: 2px solid var(--blue);
+  outline-offset: 3px;
+}
+.vault-search input:focus-visible {
+  outline: none;
+}
+.vault-list-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.vault-results {
+  margin: 8px 0;
+  color: var(--ink-2);
+  font-size: 12px;
+}
+.vault-back {
   display: inline-flex;
   align-items: center;
+  gap: 8px;
   min-height: 44px;
+  margin-bottom: 8px;
+}
+.vault-overview {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--ink-2);
+}
+.vault-overview strong {
+  color: var(--ink);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+}
+.vault-details summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: list-item;
+  align-content: center;
+}
+.vault-details p {
+  color: var(--ink-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.vault-details .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.vault-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  padding: 4px;
+  border-radius: 16px;
+  background: var(--blue-soft);
+  gap: 4px;
+}
+.vault-actions button {
+  min-height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.vault-actions button[aria-pressed="true"] {
+  background: var(--surface);
+  color: var(--blue-deep);
+}
+.finance-page h1:focus-visible,
+.vault-results:focus-visible {
+  outline: 2px solid var(--blue);
+  outline-offset: 4px;
 }

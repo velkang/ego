@@ -11,6 +11,7 @@ const unavailable: FinanceCapabilities = {
   destinations: [],
 };
 export function useFinanceCapabilities(signedIn: boolean, accountId: string) {
+  const [revision, setRevision] = useState(0);
   const [result, setResult] = useState<{
     accountId: string;
     value: FinanceCapabilities;
@@ -28,11 +29,15 @@ export function useFinanceCapabilities(signedIn: boolean, accountId: string) {
     return () => {
       alive = false;
     };
-  }, [signedIn, accountId]);
+  }, [signedIn, accountId, revision]);
   return {
     ...(signedIn && result?.accountId === accountId
       ? result.value
       : unavailable),
+    retry: () => {
+      setResult(null);
+      setRevision((n) => n + 1);
+    },
     loading: signedIn && result?.accountId !== accountId,
   };
 }
