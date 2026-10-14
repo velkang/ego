@@ -236,15 +236,13 @@ export function App() {
                 return (
                   <button
                     key={href}
-                    className={`tab-create ${active ? "active" : ""}`}
+                    className={active ? "active" : ""}
                     onClick={() => setCreating(true)}
                     aria-label="Create"
                     aria-haspopup="dialog"
                     aria-expanded={creating}
                   >
-                    <span className="tab-create-btn">
-                      <Plus size={24} strokeWidth={2.6} />
-                    </span>
+                    <Plus size={21} strokeWidth={active ? 2.4 : 2} />
                     <span>Create</span>
                   </button>
                 );
