@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Coins, Compass, ArrowUpDown, Plus } from "lucide-react";
+import { Coins, Compass, ArrowUpDown, Plus, TrendingUp } from "lucide-react";
 import { authClient } from "./lib/auth";
 import { api } from "./lib/api";
 import { invalidateWallet } from "./lib/wallet";
@@ -41,6 +41,7 @@ const EntryPage = lazy(() =>
 );
 const tabs = [
   { href: "/", label: "Home", icon: Coins },
+  { href: "/earn", label: "Earn", icon: TrendingUp },
   { href: "/create", label: "Create", icon: Plus },
   { href: "/apps", label: "Apps", icon: Compass },
   { href: "/activity", label: "Activity", icon: ArrowUpDown },
@@ -240,24 +241,26 @@ export function App() {
                 href === "/"
                   ? path === "/" || path.startsWith("/wallet")
                   : href === "/apps"
-                    ? ["/apps", "/swap", "/earn"].includes(path) ||
+                    ? ["/apps", "/swap"].includes(path) ||
                       mapView ||
                       path === "/prizes" ||
                       path.startsWith("/enter/")
-                    : href === "/activity"
-                      ? path === "/activity"
+                    : href === "/activity" || href === "/earn"
+                      ? path === href
                       : ["/create", "/hide", "/pay"].includes(path);
               if (href === "/create")
                 return (
                   <button
                     key={href}
-                    className={active ? "active" : ""}
+                    className={`create-action${active || creating ? " active" : ""}`}
                     onClick={() => setCreating(true)}
                     aria-label="Create"
                     aria-haspopup="dialog"
                     aria-expanded={creating}
                   >
-                    <Plus size={21} strokeWidth={active ? 2.4 : 2} />
+                    <span className="create-action-icon" aria-hidden="true">
+                      <Plus size={23} strokeWidth={2.4} />
+                    </span>
                     <span>Create</span>
                   </button>
                 );
