@@ -148,3 +148,12 @@ export type EarnVaultList = {
     enabled: boolean;
   }[];
 };
+
+export type EarnOverview = {
+  assetDecimals: 6;
+  totalValue: string | null;
+  principal: string | null;
+  gain: string | null;
+  positions: EarnSummary[];
+  unavailableVaults: string[];
+};

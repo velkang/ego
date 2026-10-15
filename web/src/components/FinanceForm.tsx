@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, ArrowDownUp, ChevronDown, Bitcoin } from "lucide-react";
 import {
   assetAmount,
   assetDefinition,
@@ -18,6 +18,7 @@ import {
   type WalletSnapshot,
 } from "../lib/wallet";
 import { Spinner } from "./Spinner";
+import { invalidateEarn } from "../lib/earn";
 export function FinanceForm({
   kind,
   capabilities,
@@ -157,6 +158,7 @@ export function FinanceForm({
     ) {
       notified.current = operation.id;
       invalidateWallet();
+      if (kind.startsWith("earn-")) invalidateEarn();
       const current = generation.current;
       void readWallet(accountId)
         .then((data) => {
@@ -333,6 +335,28 @@ export function FinanceForm({
           <h2 ref={focusTarget} tabIndex={-1}>
             Review {title.toLowerCase()}
           </h2>
+          {kind === "swap" && (
+            <div className="swap-box swap-review">
+              <div className="swap-leg">
+                <span>You pay</span>
+                <div>
+                  <output>
+                    {assetAmount(quote.request.amount, quote.assetDecimals)}
+                  </output>
+                  <TokenPicker value={quote.request.asset} />
+                </div>
+              </div>
+              <div className="swap-leg">
+                <span>You get · estimated</span>
+                <div>
+                  <output>
+                    {assetAmount(quote.estimatedReceived, quote.outputDecimals)}
+                  </output>
+                  <TokenPicker value={quote.outputAsset} />
+                </div>
+              </div>
+            </div>
+          )}
           <dl className="finance-review">
             {quote.vault && (
               <div>
@@ -457,7 +481,89 @@ export function FinanceForm({
           onSubmit={(e) => void review(e)}
         >
           <fieldset className="finance-fields" disabled={busy}>
-            {!kind.startsWith("earn-") && (
+            {kind === "swap" && (
+              <div className="swap-box">
+                <div className="swap-leg">
+                  <label htmlFor="swap-pay-amount">You pay</label>
+                  <div>
+                    <input
+                      id="swap-pay-amount"
+                      inputMode="decimal"
+                      autoComplete="off"
+                      placeholder="0"
+                      value={amount}
+                      onChange={(event) => setAmount(event.target.value)}
+                      required
+                    />
+                    <TokenPicker
+                      value={asset}
+                      label="Pay asset"
+                      options={capabilities.assets
+                        .filter((a) =>
+                          capabilities.swapPairs.some(
+                            (pair) => pair.from === a.symbol,
+                          ),
+                        )
+                        .map((a) => a.symbol)}
+                      onChange={(next) => {
+                        setAsset(next);
+                        if (
+                          !capabilities.swapPairs.some(
+                            (pair) => pair.from === next && pair.to === output,
+                          )
+                        )
+                          setOutput(
+                            capabilities.swapPairs.find(
+                              (pair) => pair.from === next,
+                            )!.to,
+                          );
+                      }}
+                    />
+                  </div>
+                  <small>
+                    Available:{" "}
+                    {availableUnits == null
+                      ? "Unavailable"
+                      : `${assetAmount(availableUnits, assetDefinition(asset).decimals)} ${asset}`}
+                  </small>
+                </div>
+                <button
+                  type="button"
+                  className="swap-flip"
+                  aria-label="Swap direction"
+                  disabled={
+                    !capabilities.swapPairs.some(
+                      (pair) => pair.from === output && pair.to === asset,
+                    )
+                  }
+                  onClick={() => {
+                    setAsset(output);
+                    setOutput(asset);
+                    setAmount("");
+                  }}
+                >
+                  <ArrowDownUp size={18} aria-hidden="true" />
+                </button>
+                <div className="swap-leg">
+                  <span>You get</span>
+                  <div>
+                    <output aria-label="Receive amount is calculated in the quote">
+                      —
+                    </output>
+                    <TokenPicker
+                      value={output}
+                      label="Receive asset"
+                      options={capabilities.swapPairs
+                        .filter((pair) => pair.from === asset)
+                        .map((pair) => pair.to)}
+                      onChange={setOutput}
+                    />
+                  </div>
+                  <small>Calculated in your quote.</small>
+                </div>
+              </div>
+            )}
+            {kind === "withdraw" && (
               <label>
                 Asset
                 <select
@@ -466,42 +572,10 @@ export function FinanceForm({
                     const next = e.target.value as AssetSymbol;
                     setAsset(next);
                     setDestination("Arc");
-                    if (kind === "swap")
-                      setOutput(
-                        capabilities.swapPairs.find(
-                          (pair) => pair.from === next,
-                        )!.to,
-                      );
                   }}
                 >
-                  {(kind === "withdraw"
-                    ? capabilities.assets.filter((a) => a.symbol !== "cirBTC")
-                    : capabilities.assets.filter((a) =>
-                        capabilities.swapPairs.some(
-                          (pair) => pair.from === a.symbol,
-                        ),
-                      )
-                  ).map((a) => (
-                    <option key={a.symbol} value={a.symbol}>
-                      {a.symbol}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-            {kind === "swap" && (
-              <label>
-                Receive
-                <select
-                  value={output}
-                  onChange={(e) => setOutput(e.target.value as AssetSymbol)}
-                >
                   {capabilities.assets
-                    .filter((a) =>
-                      capabilities.swapPairs.some(
-                        (pair) => pair.from === asset && pair.to === a.symbol,
-                      ),
-                    )
+                    .filter((a) => a.symbol !== "cirBTC")
                     .map((a) => (
                       <option key={a.symbol} value={a.symbol}>
                         {a.symbol}
@@ -539,39 +613,51 @@ export function FinanceForm({
                 </label>
               </>
             )}
-            <label>
-              Amount ({asset})
-              <input
-                inputMode="decimal"
-                autoComplete="off"
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                placeholder="0.00"
-                required
-              />
-            </label>
-            <p>
-              Available:{" "}
-              {availableUnits == null
-                ? "Unavailable"
-                : `${assetAmount(availableUnits, assetDefinition(asset).decimals)} ${asset}`}
-              {asset !== "USDC"
-                ? " · Network fees are paid in USDC."
-                : " · Keep USDC available for network fees."}
-            </p>
+            {kind !== "swap" && (
+              <>
+                <label>
+                  Amount ({asset})
+                  <input
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    required
+                  />
+                </label>
+                <p>
+                  Available:{" "}
+                  {availableUnits == null
+                    ? "Unavailable"
+                    : `${assetAmount(availableUnits, assetDefinition(asset).decimals)} ${asset}`}
+                  {asset !== "USDC"
+                    ? " · Network fees are paid in USDC."
+                    : " · Keep USDC available for network fees."}
+                </p>
+              </>
+            )}
             {kind === "swap" && (
-              <label>
-                Slippage tolerance (%)
-                <input
-                  type="number"
-                  min="0.1"
-                  max="3"
-                  step="0.1"
-                  value={slippage}
-                  onChange={(e) => setSlippage(e.target.value)}
-                  required
-                />
-              </label>
+              <details className="swap-settings">
+                <summary>
+                  Slippage tolerance <span>{slippage || "—"}%</span>
+                </summary>
+                <label>
+                  Slippage tolerance (%)
+                  <input
+                    type="number"
+                    min="0.1"
+                    max="3"
+                    step="0.1"
+                    value={slippage}
+                    onChange={(e) => setSlippage(e.target.value)}
+                    required
+                  />
+                </label>
+                <p>
+                  The minimum received in your quote includes this tolerance.
+                </p>
+              </details>
             )}
             {earn && (
               <p>
@@ -591,5 +677,50 @@ export function FinanceForm({
         </form>
       )}
     </div>
+  );
+}
+
+function TokenPicker({
+  value,
+  options,
+  onChange,
+  label,
+}: {
+  value: AssetSymbol;
+  options?: AssetSymbol[];
+  onChange?: (value: AssetSymbol) => void;
+  label?: string;
+}) {
+  return (
+    <span className={`swap-token${onChange ? " selectable" : ""}`}>
+      {value === "cirBTC" ? (
+        <Bitcoin size={24} aria-hidden="true" />
+      ) : (
+        <img
+          src={`/tokens/${value.toLowerCase()}.svg`}
+          width={24}
+          height={24}
+          alt=""
+        />
+      )}
+      {onChange ? (
+        <>
+          <select
+            value={value}
+            onChange={(event) => onChange(event.target.value as AssetSymbol)}
+            aria-label={label}
+          >
+            {options?.map((symbol) => (
+              <option value={symbol} key={symbol}>
+                {symbol}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={13} aria-hidden="true" />
+        </>
+      ) : (
+        <span>{value}</span>
+      )}
+    </span>
   );
 }

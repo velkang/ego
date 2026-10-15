@@ -14,6 +14,8 @@ import {
   assetDefinition,
   type FinanceQuote,
   type FinanceOperation,
+  type EarnSummary,
+  type EarnOverview,
 } from "@ego/chain";
 import { d1 } from "./d1";
 import type { Bindings } from "../src/env";
@@ -44,6 +46,8 @@ const state = vi.hoisted(() => ({
   >(),
   keys: [] as string[],
   prepared: 0,
+  positions: new Map<string, EarnSummary>(),
+  positionReads: [] as string[],
 }));
 const owner = "0x2222222222222222222222222222222222222222",
   recipient = "0x3333333333333333333333333333333333333333";
@@ -178,6 +182,12 @@ vi.mock("../src/finance-provider", async (load) => {
   return {
     ...actual,
     verifyAssets: async () => {},
+    earnSummary: async (_env: unknown, _wallet: unknown, address: string) => {
+      state.positionReads.push(address);
+      const position = state.positions.get(address.toLowerCase());
+      if (!position) throw new Error("Position temporarily unavailable");
+      return position;
+    },
     providerQuote: async (
       _env: unknown,
       _wallet: unknown,
@@ -260,6 +270,8 @@ beforeEach(() => {
     prepared: 0,
   });
   state.transactions.clear();
+  state.positions.clear();
+  state.positionReads.length = 0;
   state.keys.length = 0;
   pending = [];
   sql = new DatabaseSync(":memory:");
@@ -640,7 +652,6 @@ it("requires a vault for Earn quotes and preserves the selected vault on submiss
   expect(response.status).toBe(200);
   const q = ((await response.json()) as { quote: FinanceQuote }).quote;
   expect(q.request.vaultAddress).toBe(vaultAddress);
-  env.EARN_VAULT_ADDRESS = owner;
   const submitted = await request(`/finance/quotes/${q.id}/submit`, {
     vaultAddress: owner,
   });
@@ -653,4 +664,103 @@ it("requires a vault for Earn quotes and preserves the selected vault on submiss
     .prepare("SELECT review FROM finance_quote WHERE id = ?")
     .get(q.id) as { review: string };
   expect(JSON.parse(saved.review).vaultAddress).toBe(vaultAddress);
+});
+
+function trackVault(user: string, address: string, legacy = false) {
+  const id = crypto.randomUUID(),
+    now = Date.now();
+  sql
+    .prepare(
+      "INSERT INTO finance_quote (id,user_id,request,review,fee,expires_at,created_at) VALUES (?,?,?,?,?,?,?)",
+    )
+    .run(
+      id,
+      user,
+      JSON.stringify({
+        kind: "earn-deposit",
+        asset: "USDC",
+        amount: "1",
+        ...(legacy ? {} : { vaultAddress: address }),
+      }),
+      JSON.stringify(legacy ? { vaultAddress: address } : {}),
+      "{}",
+      now + 60000,
+      now,
+    );
+  sql
+    .prepare(
+      "INSERT INTO finance_operation (id,user_id,status,created_at,updated_at) VALUES (?,?,'confirmed',?,?)",
+    )
+    .run(id, user, now, now);
+}
+function position(
+  address: string,
+  value: string,
+  gain: string | null = "0",
+): EarnSummary {
+  return {
+    assetDecimals: 6,
+    shareDecimals: 18,
+    vault: {
+      address,
+      name: "USDC vault",
+      provider: "MORPHO",
+      apy: 0.03,
+      fees: "No entry fee",
+      liquidity: "1000000000",
+    },
+    position: { value, principal: value, shares: "1", gain },
+  };
+}
+it("returns an empty Earn overview on page load without a selected or default vault", async () => {
+  const response = await request("/earn");
+  expect(response.status).toBe(200);
+  expect(await response.json()).toEqual({
+    assetDecimals: 6,
+    totalValue: "0",
+    principal: "0",
+    gain: "0",
+    positions: [],
+    unavailableVaults: [],
+  });
+  expect(state.positionReads).toHaveLength(0);
+  expect(state.keys).toHaveLength(0);
+});
+it("aggregates only the authenticated account's used vaults with exact integer precision", async () => {
+  const a = "0x4444444444444444444444444444444444444444",
+    b = "0x5555555555555555555555555555555555555555",
+    other = "0x6666666666666666666666666666666666666666";
+  trackVault("a", a);
+  trackVault("a", a);
+  trackVault("a", b, true);
+  trackVault("b", other);
+  state.positions.set(a, position(a, "9007199254740993", "-1"));
+  state.positions.set(b, position(b, "7"));
+  const response = await request("/earn");
+  const data = (await response.json()) as EarnOverview;
+  expect(response.status).toBe(200);
+  expect(data.totalValue).toBe("9007199254741000");
+  expect(data.gain).toBe("-1");
+  expect(state.positionReads.sort()).toEqual([a, b]);
+  expect(data.positions).toHaveLength(2);
+});
+it("does not present partial or unavailable position totals as zero", async () => {
+  const a = "0x4444444444444444444444444444444444444444",
+    b = "0x5555555555555555555555555555555555555555";
+  trackVault("a", a);
+  trackVault("a", b);
+  state.positions.set(a, position(a, "1234567", null));
+  const data = (await (await request("/earn")).json()) as EarnOverview;
+  expect(data.totalValue).toBeNull();
+  expect(data.gain).toBeNull();
+  expect(data.positions[0].position.value).toBe("1234567");
+  expect(data.unavailableVaults).toEqual([b]);
+});
+it("still reads an explicitly selected vault and rejects malformed selections", async () => {
+  const address = "0x4444444444444444444444444444444444444444";
+  state.positions.set(address, position(address, "1234567"));
+  const response = await request(`/earn?vault=${address}`);
+  expect(response.status).toBe(200);
+  expect(((await response.json()) as EarnSummary).vault.address).toBe(address);
+  expect((await request("/earn?vault=invalid")).status).toBe(400);
 });

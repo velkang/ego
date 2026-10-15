@@ -1,12 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, ExternalLink, Search } from "lucide-react";
+import {
+  ArrowLeft,
+  ChevronRight,
+  ExternalLink,
+  Search,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+} from "lucide-react";
 import { assetAmount, type EarnSummary, type EarnVaultList } from "@ego/chain";
 import { useFinanceCapabilities } from "../lib/finance";
 import { api } from "../lib/api";
 import { FinanceForm } from "../components/FinanceForm";
 import { Spinner } from "../components/Spinner";
+import { Amount } from "../components/Amount";
+import { Investments } from "../components/Investments";
+import { useEarnOverview } from "../lib/earn";
 
-type Vault = EarnVaultList["vaults"][number];
+type Vault = Pick<
+  EarnVaultList["vaults"][number],
+  "address" | "name" | "provider"
+>;
 const percent = (value: number | null) =>
   value === null ? "Unavailable" : `${(value * 100).toFixed(2)}%`;
 export function FinancePage({
@@ -23,7 +36,13 @@ export function FinancePage({
   const capabilities = useFinanceCapabilities(signedIn, accountId);
   const earning = path === "/earn";
   const [vaults, setVaults] = useState<EarnVaultList | null>(null);
-  const [selected, setSelected] = useState<Vault | null>(null);
+  const portfolio = useEarnOverview(signedIn && earning, accountId);
+  const [selected, setSelected] = useState<Vault | null>(() => {
+    const address = new URLSearchParams(window.location.search).get("vault");
+    return address && /^0x[0-9a-fA-F]{40}$/.test(address)
+      ? { address, name: "Vault", provider: "USDC vault" }
+      : null;
+  });
   const [summary, setSummary] = useState<EarnSummary | null>(null);
   const [error, setError] = useState(""),
     [vaultError, setVaultError] = useState("");
@@ -31,6 +50,11 @@ export function FinancePage({
     [withdrawing, setWithdrawing] = useState(false);
   const [search, setSearch] = useState(""),
     [revision, setRevision] = useState(0);
+  const selectionSource = useRef<"deck" | "discovery">(
+    new URLSearchParams(window.location.search).has("vault")
+      ? "deck"
+      : "discovery",
+  );
   const heading = useRef<HTMLHeadingElement>(null),
     results = useRef<HTMLParagraphElement>(null);
   const generation = useRef(0),
@@ -87,8 +111,12 @@ export function FinancePage({
     if (selected) {
       lastSelected.current = selected.address.toLowerCase();
       heading.current?.focus();
-    } else if (lastSelected.current)
-      document.getElementById(`vault-${lastSelected.current}`)?.focus();
+    } else if (lastSelected.current) {
+      const target = document.getElementById(
+        `${selectionSource.current === "deck" ? "manage-investment" : "vault"}-${lastSelected.current}`,
+      );
+      (target || heading.current)?.focus();
+    }
   }, [selected]);
   useEffect(() => {
     let active = true;
@@ -113,6 +141,10 @@ export function FinancePage({
       active = false;
     };
   }, [earning, selected?.address, accountId, revision, signedIn]);
+  const selectedIdentity =
+    summary?.vault.address.toLowerCase() === selected?.address.toLowerCase()
+      ? summary?.vault
+      : selected;
   const visible =
     vaults?.vaults.filter((v) =>
       `${v.name} ${v.provider}`
@@ -124,22 +156,53 @@ export function FinancePage({
       {selected && (
         <button
           className="text-button vault-back"
-          onClick={() => setSelected(null)}
+          onClick={() => {
+            setSelected(null);
+            history.replaceState({}, "", "/earn");
+          }}
         >
           <ArrowLeft size={18} aria-hidden="true" /> All vaults
         </button>
       )}
       <header className="page-heading">
         <h1 ref={heading} tabIndex={-1}>
-          {earning ? selected?.name || "Earn" : "Swap"}
+          {earning ? selectedIdentity?.name || "Earn" : "Swap"}
         </h1>
         <p>
           {earning
             ? selected
-              ? selected.provider
+              ? selectedIdentity?.provider
               : "Explore USDC lending vaults. Returns vary."
             : "Exchange assets in your wallet."}
         </p>
+        {earning && !selected && signedIn && (
+          <div className="earn-overview">
+            {portfolio.busy && !portfolio.data ? (
+              <Spinner label="Loading Earn overview" />
+            ) : portfolio.data?.totalValue != null ? (
+              <Amount base={portfolio.data.totalValue} currency="USDC" />
+            ) : (
+              <strong className="amount">—</strong>
+            )}
+            <p>
+              {portfolio.data?.gain != null ? (
+                <span
+                  className={
+                    BigInt(portfolio.data.gain) < 0n
+                      ? "deck-earned loss"
+                      : "deck-earned"
+                  }
+                >
+                  {BigInt(portfolio.data.gain) > 0n ? "+" : ""}
+                  {assetAmount(portfolio.data.gain, 6)} USDC gain / loss
+                </span>
+              ) : (
+                "Gain / loss unavailable"
+              )}{" "}
+              · Positions opened through Ego
+            </p>
+          </div>
+        )}
       </header>
       {!signedIn ? (
         <button className="button primary" onClick={requestSignIn}>
@@ -179,24 +242,25 @@ export function FinancePage({
           ) : (
             <>
               <section
-                className="earn-position"
+                className="earn-position grow-hero"
                 aria-label="Your vault position"
+                style={{
+                  viewTransitionName: `vault-${summary.vault.address.toLowerCase()}`,
+                }}
               >
-                <div className="vault-overview">
-                  <span>Variable APY</span>
-                  <strong>{percent(summary.vault.apy)}</strong>
+                <span className="position-label">Your position</span>
+                <Amount base={summary.position.value} currency="USDC" />
+                <div className="grow-stats">
+                  <div>
+                    <span>Variable APY</span>
+                    <strong>{percent(summary.vault.apy)}</strong>
+                  </div>
+                  <div>
+                    <span>Provider</span>
+                    <strong>{summary.vault.provider}</strong>
+                  </div>
                 </div>
                 <dl className="finance-review">
-                  <div>
-                    <dt>Your position</dt>
-                    <dd>
-                      {assetAmount(
-                        summary.position.value,
-                        summary.assetDecimals,
-                      )}{" "}
-                      USDC
-                    </dd>
-                  </div>
                   <div>
                     <dt>Deposited principal</dt>
                     <dd>
@@ -236,21 +300,23 @@ export function FinancePage({
                   </a>
                 </details>
                 <div
-                  className="vault-actions"
+                  className="grow-actions"
                   role="group"
                   aria-label="Earn action"
                 >
                   <button
+                    className={`button ${!withdrawing ? "primary" : "secondary"}`}
                     aria-pressed={!withdrawing}
                     onClick={() => setWithdrawing(false)}
                   >
-                    Deposit
+                    <ArrowDownToLine size={18} aria-hidden="true" /> Deposit
                   </button>
                   <button
+                    className={`button ${withdrawing ? "primary" : "secondary"}`}
                     aria-pressed={withdrawing}
                     onClick={() => setWithdrawing(true)}
                   >
-                    Withdraw
+                    <ArrowUpFromLine size={18} aria-hidden="true" /> Withdraw
                   </button>
                 </div>
               </section>
@@ -261,13 +327,48 @@ export function FinancePage({
                 accountId={accountId}
                 requestSignIn={requestSignIn}
                 earn={summary}
-                onConfirmed={() => setRevision((n) => n + 1)}
+                onConfirmed={() => {
+                  setRevision((n) => n + 1);
+                  portfolio.refresh();
+                }}
               />
+              <section className="grow-info">
+                <h2>How it works</h2>
+                <p>
+                  Your USDC is deposited into {summary.vault.name}, a lending
+                  vault provided by {summary.vault.provider}. Vault shares track
+                  your position; withdrawals return available USDC to your
+                  wallet.
+                </p>
+              </section>
+              <section className="grow-info grow-risk">
+                <h2>Risks</h2>
+                <p>
+                  Returns change and are not guaranteed. Smart-contract failures
+                  and losses in lending markets can reduce your position.
+                  Withdrawals depend on available vault liquidity.
+                </p>
+              </section>
             </>
           )}
         </>
       ) : (
         <section aria-label="USDC vaults">
+          <Investments
+            initialOpen={lastSelected.current}
+            overview={portfolio.data}
+            busy={portfolio.busy}
+            error={portfolio.error}
+            retry={portfolio.refresh}
+            onSelect={(position) => {
+              selectionSource.current = "deck";
+              setWithdrawing(false);
+              setSelected(position.vault);
+            }}
+          />
+          <h2 id="vault-discovery" className="vault-discovery-title">
+            Explore vaults
+          </h2>
           <label className="vault-search">
             <Search size={18} aria-hidden="true" />
             <input
@@ -311,6 +412,7 @@ export function FinancePage({
                   className="vault-row"
                   id={`vault-${vault.address.toLowerCase()}`}
                   onClick={() => {
+                    selectionSource.current = "discovery";
                     setWithdrawing(false);
                     setSelected(vault);
                   }}

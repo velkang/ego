@@ -1,7 +1,6 @@
 import type { User } from "better-auth";
 export type Bindings = {
   DB: D1Database;
-  EARN_VAULT_ADDRESS?: string;
   APP_ORIGIN: string;
   BETTER_AUTH_SECRET: string;
   ACCOUNT_HASH_SECRET: string;

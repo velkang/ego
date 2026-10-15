@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
+  ArrowLeftRight,
   ChevronRight,
   Compass,
   Gift,
@@ -14,6 +15,8 @@ import { formatUSDC, explorerTransaction } from "@ego/chain";
 import { post } from "../lib/api";
 import { readWallet, type WalletSnapshot } from "../lib/wallet";
 import { watchWallet } from "../lib/wallet-refresh";
+import { Investments } from "../components/Investments";
+import { useEarnOverview } from "../lib/earn";
 import { Amount } from "../components/Amount";
 import { Coin, LargeCoin } from "../components/Coin";
 import { Link } from "../components/Link";
@@ -33,6 +36,7 @@ export function WalletPage({
   onAction: (action: "send" | "receive") => void;
   onCreate: () => void;
 }) {
+  const investments = useEarnOverview(signedIn, accountId);
   const generation = useRef(0);
   const [data, setData] = useState<WalletSnapshot | null>(null),
     [error, setError] = useState(""),
@@ -204,9 +208,21 @@ export function WalletPage({
         </span>
         <ChevronRight size={18} />
       </Link>
+      {signedIn && (
+        <Investments
+          overview={investments.data}
+          busy={investments.busy}
+          error={investments.error}
+          retry={investments.refresh}
+          hidden={hidden}
+        />
+      )}
       <section className="section">
         <div className="section-title">
           <h2>Coins</h2>
+          <Link href="/swap" className="text-button">
+            Swap <ArrowLeftRight size={15} aria-hidden="true" />
+          </Link>
         </div>
         <div className="list-card">
           <div className="list-row coin-row">
@@ -230,9 +246,13 @@ export function WalletPage({
             ?.filter((a) => a.symbol !== "USDC")
             .map((a) => (
               <div className="list-row coin-row" key={a.symbol}>
-                <span className="token-initial" aria-hidden="true">
-                  {a.symbol === "EURC" ? "E" : "B"}
-                </span>
+                {a.symbol === "EURC" ? (
+                  <img src="/tokens/eurc.svg" alt="" width={36} height={36} />
+                ) : (
+                  <span className="token-initial" aria-hidden="true">
+                    B
+                  </span>
+                )}
                 <span className="row-main">
                   <strong>{a.symbol}</strong>
                   <span>

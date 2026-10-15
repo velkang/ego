@@ -2,6 +2,7 @@ const messages: Record<string, string> = {
   FINANCE_UNAVAILABLE:
     "This feature is currently unavailable. Please try again later.",
   UNSUPPORTED_ROUTE: "This asset pair or destination network is not supported.",
+  VAULT_REQUIRED: "Select a vault to view its position or make a deposit.",
   UNSUPPORTED_VAULT: "This vault is not available for Arc USDC deposits.",
   UNSUPPORTED_TRANSACTION:
     "This transaction could not be safely prepared. Review again.",

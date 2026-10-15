@@ -15,6 +15,8 @@ import {
   type FinanceRequest,
   type FinanceQuote,
   type FinanceOperation,
+  type EarnOverview,
+  type EarnSummary,
 } from "@ego/chain";
 import type { AppEnvironment, Bindings } from "./env";
 import { circle, ensureWallet, rpc } from "./circle";
@@ -589,6 +591,57 @@ export async function reconcileFinances(env: Bindings) {
   ).results;
   for (const job of jobs) await reconcileFinance(env, job.id);
 }
+export async function earnOverview(
+  env: Bindings,
+  userId: string,
+): Promise<EarnOverview> {
+  const rows = (
+    await env.DB.prepare(
+      `
+    SELECT DISTINCT lower(COALESCE(json_extract(q.request,'$.vaultAddress'), json_extract(q.review,'$.vaultAddress'))) AS address
+    FROM finance_quote q JOIN finance_operation o ON o.id = q.id
+    WHERE o.user_id = ? AND json_extract(q.request,'$.kind') IN ('earn-deposit','earn-withdraw')
+  `,
+    )
+      .bind(userId)
+      .all<{ address: string | null }>()
+  ).results;
+  const addresses = rows
+    .map((row) => row.address)
+    .filter((address): address is string => !!address && isAddress(address));
+  const positions: EarnSummary[] = [],
+    unavailableVaults: string[] = [];
+  if (addresses.length) {
+    await verifyAssets(env);
+    const wallet = await ensureWallet(env, userId);
+    // Read only this account's previously used vaults, with bounded concurrency.
+    for (let index = 0; index < addresses.length; index += 4) {
+      const batch = addresses.slice(index, index + 4);
+      const results = await Promise.allSettled(
+        batch.map((address) => earnSummary(env, wallet, address)),
+      );
+      results.forEach((result, offset) => {
+        if (result.status === "fulfilled") positions.push(result.value);
+        else unavailableVaults.push(batch[offset]);
+      });
+    }
+  }
+  const sum = (field: "value" | "principal" | "gain") =>
+    unavailableVaults.length ||
+    positions.some((p) => p.position[field] === null)
+      ? null
+      : positions
+          .reduce((total, p) => total + BigInt(p.position[field]!), 0n)
+          .toString();
+  return {
+    assetDecimals: 6,
+    totalValue: sum("value"),
+    principal: sum("principal"),
+    gain: sum("gain"),
+    positions,
+    unavailableVaults,
+  };
+}
 export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
   app.get("/v1/wallet/capabilities", async (c) =>
     c.json(await capabilities(c.env)),
@@ -603,18 +656,22 @@ export function registerFinanceRoutes(app: Hono<AppEnvironment>) {
     return c.json(await listEarnVaults(c.env, page));
   });
   app.get("/v1/earn", async (c) => {
-    await verifyAssets(c.env);
-    return c.json(
-      await earnSummary(
-        c.env,
-        await ensureWallet(c.env, c.get("user").id),
-        z
-          .string()
-          .regex(/^0x[0-9a-fA-F]{40}$/)
-          .optional()
-          .parse(c.req.query("vault")),
-      ),
-    );
+    const address = c.req.query("vault");
+    if (address !== undefined) {
+      const selected = z
+        .string()
+        .regex(/^0x[0-9a-fA-F]{40}$/)
+        .parse(address);
+      await verifyAssets(c.env);
+      return c.json(
+        await earnSummary(
+          c.env,
+          await ensureWallet(c.env, c.get("user").id),
+          selected,
+        ),
+      );
+    }
+    return c.json(await earnOverview(c.env, c.get("user").id));
   });
   app.use("/v1/finance/*", async (c, next) => {
     if (

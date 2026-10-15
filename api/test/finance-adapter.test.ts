@@ -252,12 +252,8 @@ it("executes against the reviewed selected vault rather than a configured defaul
   const deposit = vi
     .spyOn(EarnKit.prototype, "deposit")
     .mockResolvedValue({ txHash: `0x${"aa".repeat(32)}` } as never);
-  const configured = {
-    ...env,
-    EARN_VAULT_ADDRESS: "0x3333333333333333333333333333333333333333",
-  };
   await executeProvider(
-    configured,
+    env,
     { id: "wallet", address: context.address },
     {
       kind: "earn-deposit",

@@ -252,12 +252,9 @@ export function validRecipient(address: string, type: string) {
   const bytes = value === 0n ? 0 : Math.ceil(value.toString(2).length / 8);
   return bytes + (address.match(/^1*/)?.[0].length || 0) === 32 && value !== 0n;
 }
-export async function vaultInfo(
-  env: Bindings,
-  address = env.EARN_VAULT_ADDRESS,
-) {
+export async function vaultInfo(env: Bindings, address: string) {
   if (!address || !isAddress(address))
-    throw new ApiError("UNSUPPORTED_VAULT", 409);
+    throw new ApiError("VAULT_REQUIRED", 400);
   const result = await earn().getVaults({
     vaults: [{ chain: "Arc", vaultAddress: address }],
     config: { apiKey: env.CIRCLE_API_KEY },
@@ -288,7 +285,7 @@ export async function vaultInfo(
 export async function earnSummary(
   env: Bindings,
   wallet: Wallet,
-  address?: string,
+  address: string,
 ): Promise<EarnSummary> {
   const vault = await vaultInfo(env, address);
   const position = await earn().getPosition({
@@ -418,7 +415,7 @@ export async function providerQuote(
     );
     providerQuote = quote.quote;
   } else if (request.kind.startsWith("earn-")) {
-    const vault = await vaultInfo(env, request.vaultAddress);
+    const vault = await vaultInfo(env, request.vaultAddress!);
     vaultReview = {
       address: vault.vaultAddress,
       name: vault.name,

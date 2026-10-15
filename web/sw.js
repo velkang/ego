@@ -9,6 +9,7 @@ const SHELL = [
   "/coin/front.png",
   "/coin/tilt.png",
   "/tokens/usdc.svg",
+  "/tokens/eurc.svg",
 ];
 const validAsset = (response, path) => {
   if (!response?.ok) return false;
@@ -34,7 +35,7 @@ self.addEventListener("install", (event) => {
           await cache.put(path, response);
         }),
       ),
-    ),
+    ).then(() => self.skipWaiting()),
   );
 });
 self.addEventListener("activate", (event) => {
@@ -43,8 +44,10 @@ self.addEventListener("activate", (event) => {
       .keys()
       .then((keys) =>
         Promise.all(
+          // Retain the preceding build for already-open tabs and their lazy chunks.
           keys
             .filter((key) => key.startsWith("ego-shell-") && key !== CACHE)
+            .slice(0, -1)
             .map((key) => caches.delete(key)),
         ),
       )
@@ -64,7 +67,7 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE);
-        // Keep HTML and lazy chunks from the same build until all its tabs close.
+        // A fully installed update serves its matching shell on the next navigation.
         return (
           (await cache.match("/")) ||
           fetch(event.request, { cache: "no-cache" })
@@ -77,7 +80,8 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(
       (async () => {
         const cache = await caches.open(CACHE);
-        const saved = await cache.match(event.request);
+        const saved = await cache.match(event.request) ||
+          (url.pathname.startsWith("/assets/") ? await caches.match(event.request) : undefined);
         if (saved && validAsset(saved, url.pathname)) return saved;
         if (saved) await cache.delete(event.request);
         const response = await fetch(event.request);
