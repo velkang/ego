@@ -210,7 +210,6 @@ export function WalletPage({
       </Link>
       {signedIn && (
         <Investments
-          accountId={accountId}
           overview={investments.data}
           busy={investments.busy}
           error={investments.error}

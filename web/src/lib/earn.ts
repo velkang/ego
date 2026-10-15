@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { EarnOverview, EarnVaultList } from "@ego/chain";
+import type { EarnOverview } from "@ego/chain";
 import { api } from "./api";
 let cached:
   | {
@@ -67,26 +67,4 @@ export function useEarnOverview(signedIn: boolean, accountId: string) {
       void load(true);
     },
   };
-}
-
-let catalog:
-  | { accountId: string; time: number; value: Promise<EarnVaultList> }
-  | undefined;
-export function readEarnVaults(accountId: string) {
-  if (
-    !catalog ||
-    catalog.accountId !== accountId ||
-    Date.now() - catalog.time > 60000
-  ) {
-    const entry = {
-      accountId,
-      time: Date.now(),
-      value: api<EarnVaultList>("/earn/vaults?page=1"),
-    };
-    catalog = entry;
-    void entry.value.catch(() => {
-      if (catalog === entry) catalog = undefined;
-    });
-  }
-  return catalog.value;
 }

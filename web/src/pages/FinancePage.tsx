@@ -14,7 +14,7 @@ import { FinanceForm } from "../components/FinanceForm";
 import { Spinner } from "../components/Spinner";
 import { Amount } from "../components/Amount";
 import { Investments } from "../components/Investments";
-import { readEarnVaults, useEarnOverview } from "../lib/earn";
+import { useEarnOverview } from "../lib/earn";
 
 type Vault = Pick<
   EarnVaultList["vaults"][number],
@@ -65,9 +65,7 @@ export function FinancePage({
     setVaultBusy(true);
     setVaultError("");
     try {
-      const result = await (page === 1
-        ? readEarnVaults(accountId)
-        : api<EarnVaultList>(`/earn/vaults?page=${page}`));
+      const result = await api<EarnVaultList>(`/earn/vaults?page=${page}`);
       if (current !== generation.current) return;
       focusResults.current = page > 1;
       setVaults((previous) =>
@@ -356,9 +354,19 @@ export function FinancePage({
         </>
       ) : (
         <section aria-label="USDC vaults">
+          {portfolio.error && !portfolio.data && (
+            <p className="error" role="alert">
+              {portfolio.error}
+              <button
+                className="text-button"
+                disabled={portfolio.busy}
+                onClick={portfolio.refresh}
+              >
+                Retry positions
+              </button>
+            </p>
+          )}
           <Investments
-            accountId={accountId}
-            initialVaults={vaults}
             initialOpen={lastSelected.current}
             overview={portfolio.data}
             busy={portfolio.busy}

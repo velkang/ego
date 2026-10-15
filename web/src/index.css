@@ -1658,15 +1658,6 @@ textarea {
   font-weight: 600;
   color: var(--blue-deep);
 }
-.deck-empty {
-  display: grid;
-  gap: 6px;
-  padding: 0 18px 14px;
-}
-.deck-empty p {
-  font-size: 14px;
-  color: var(--ink-2);
-}
 .deck-earned {
   font-size: 13px;
   font-weight: 600;
