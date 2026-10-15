@@ -1,40 +1,86 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowUpRight, ChevronRight, Vault } from "lucide-react";
-import { assetAmount, type EarnOverview, type EarnSummary } from "@ego/chain";
+import { assetAmount, type EarnOverview, type EarnVaultList } from "@ego/chain";
 import { Amount } from "./Amount";
 import { Link } from "./Link";
 import { Spinner } from "./Spinner";
+import { readEarnVaults } from "../lib/earn";
+type VaultChoice = Pick<
+  EarnVaultList["vaults"][number],
+  "address" | "name" | "provider" | "apy"
+>;
 export function Investments({
   overview,
+  accountId,
   busy,
   error,
   retry,
   hidden = false,
   onSelect,
   initialOpen,
+  initialVaults,
 }: {
   overview: EarnOverview | null;
+  accountId: string;
   busy: boolean;
   error: string;
   retry: () => void;
   hidden?: boolean;
   initialOpen?: string;
-  onSelect?: (position: EarnSummary) => void;
+  initialVaults?: EarnVaultList | null;
+  onSelect?: (vault: VaultChoice) => void;
 }) {
   const positions =
     overview?.positions.filter(
       (p) => BigInt(p.position.value) > 0n || BigInt(p.position.shares) > 0n,
     ) || [];
+  const [available, setAvailable] = useState<EarnVaultList | null>(initialVaults || null);
+  const [catalogError, setCatalogError] = useState("");
+  const [catalogBusy, setCatalogBusy] = useState(true);
+  const [revision, setRevision] = useState(0);
+  useEffect(() => {
+    let active = true;
+    if (initialVaults) {
+      setAvailable(initialVaults);
+      setCatalogBusy(false);
+      return;
+    }
+    setAvailable(null);
+    setCatalogError("");
+    setCatalogBusy(true);
+    void readEarnVaults(accountId)
+      .then((value) => {
+        if (active) setAvailable(value);
+      })
+      .catch((e) => {
+        if (active) setCatalogError((e as Error).message);
+      })
+      .finally(() => {
+        if (active) setCatalogBusy(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountId, revision, initialVaults]);
+  // Keep every owned position, then fill the reference's three-card deck with available vaults.
+  const cards: VaultChoice[] = [
+    ...positions.map((position) => position.vault),
+    ...(available?.vaults || [])
+      .filter((vault) => !positions.some(
+        (p) => p.vault.address.toLowerCase() === vault.address.toLowerCase(),
+      ))
+      .slice(0, Math.max(0, 3 - positions.length)),
+  ];
   const [expanded, setExpanded] = useState<string | null>(initialOpen || null);
-  const open = positions.some(
-    (p) => p.vault.address.toLowerCase() === expanded?.toLowerCase(),
+  const open = cards.some(
+    (p) => p.address.toLowerCase() === expanded?.toLowerCase(),
   )
     ? expanded?.toLowerCase()
-    : positions[0]?.vault.address.toLowerCase();
+    : cards[0]?.address.toLowerCase();
   return (
     <section className="section investments-section" aria-label="Investments">
       <Link href="/earn" className="section-title section-link">
-        <h2>{onSelect ? "Your positions" : "Investments"}</h2>
+        <h2>Investments</h2>
         <span>
           {overview?.totalValue != null
             ? hidden
@@ -52,12 +98,24 @@ export function Investments({
           </button>
         </p>
       )}
-      {busy && !overview ? (
+      {catalogError && (
+        <p className="error" role="alert">
+          {catalogError}
+          <button
+            className="text-button"
+            disabled={catalogBusy}
+            onClick={() => setRevision((n) => n + 1)}
+          >
+            Retry vaults
+          </button>
+        </p>
+      )}
+      {busy && !overview && !cards.length ? (
         <Spinner label="Loading investments" />
       ) : (
-        overview && (
+        (overview || cards.length > 0) && (
           <>
-            {!!overview.unavailableVaults.length && (
+            {!!overview?.unavailableVaults.length && (
               <p role="status">
                 Some positions couldn’t load.{" "}
                 <button className="text-button" disabled={busy} onClick={retry}>
@@ -66,19 +124,26 @@ export function Investments({
               </p>
             )}
             <div className="deck">
-              {positions.length ? (
-                positions.map((position, index) => {
-                  const address = position.vault.address,
+              {cards.length ? (
+                cards.map((vault, index) => {
+                  const position = positions.find(
+                    (p) => p.vault.address.toLowerCase() === vault.address.toLowerCase(),
+                  );
+                  const address = vault.address,
                     active = address.toLowerCase() === open,
                     id = `investment-${address.toLowerCase()}`;
-                  const change = position.position.gain;
+                  const change = position?.position.gain ?? null;
                   const body = (
                     <>
-                      <Amount
-                        base={position.position.value}
-                        hidden={hidden}
-                        currency="USDC"
-                      />
+                      {position ? (
+                        <Amount
+                          base={position.position.value}
+                          hidden={hidden}
+                          currency="USDC"
+                        />
+                      ) : (
+                        <p>Explore this USDC vault</p>
+                      )}
                       {change !== null && !hidden && (
                         <span
                           className={`deck-earned${BigInt(change) < 0n ? " loss" : ""}`}
@@ -89,17 +154,19 @@ export function Investments({
                       )}
                       <div className="deck-meta">
                         <span className="deck-rate">
-                          {(position.vault.apy * 100).toFixed(2)}% variable APY
+                          {vault.apy === null
+                            ? "APY unavailable"
+                            : `${(vault.apy * 100).toFixed(2)}% variable APY`}
                         </span>
-                        <span>{position.vault.provider}</span>
+                        <span>{vault.provider}</span>
                       </div>
                       {onSelect ? (
                         <button
                           id={`manage-investment-${address.toLowerCase()}`}
                           className="deck-open"
-                          onClick={() => onSelect(position)}
+                          onClick={() => onSelect(vault)}
                         >
-                          Manage position{" "}
+                          {position ? "Manage position" : "Explore vault"}{" "}
                           <ArrowUpRight size={15} aria-hidden="true" />
                         </button>
                       ) : (
@@ -107,7 +174,7 @@ export function Investments({
                           className="deck-open"
                           href={`/earn?vault=${address}`}
                         >
-                          Manage position{" "}
+                          {position ? "Manage position" : "Explore vault"}{" "}
                           <ArrowUpRight size={15} aria-hidden="true" />
                         </Link>
                       )}
@@ -132,13 +199,15 @@ export function Investments({
                           <Vault size={16} aria-hidden="true" />
                         </span>
                         <span className="deck-title">
-                          {position.vault.name}
+                          {vault.name}
                         </span>
                         {!active && (
                           <span className="deck-amount">
-                            {hidden
-                              ? "••••"
-                              : `${assetAmount(position.position.value, 6)} USDC`}
+                            {position
+                              ? hidden
+                                ? "••••"
+                                : `${assetAmount(position.position.value, 6)} USDC`
+                              : "USDC"}
                           </span>
                         )}
                       </button>
@@ -148,6 +217,8 @@ export function Investments({
                     </article>
                   );
                 })
+              ) : catalogBusy ? (
+                <Spinner label="Loading investment vaults" />
               ) : (
                 <article className="deck-card open">
                   <div className="deck-head">
@@ -158,9 +229,9 @@ export function Investments({
                   </div>
                   <div className="deck-empty">
                     <p>
-                      {overview.unavailableVaults.length
+                      {overview?.unavailableVaults.length
                         ? "Your positions are temporarily unavailable."
-                        : "Put USDC to work in a vault you choose."}
+                        : "No USDC vaults are available right now."}
                     </p>
                     <Link href="/earn" className="deck-open">
                       Explore vaults{" "}
